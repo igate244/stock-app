@@ -1,0 +1,31 @@
+# 過去の「勝ちパターン」代表銘柄
+# screener/signals.py の similarity_score がこのリストを基準に類似度を計算する
+#
+# pattern_start: 「勝ちパターン」が実際に始まった底の日付(YYYY-MM-DD)。
+#   分かっているものは埋めておくと類似度の精度が上がる。
+#   未記入の場合は「過去5年の最安値の日」を底とみなして、その後の上昇カーブと比較する。
+winning_stocks:
+  - name: 三菱電機
+    ticker: "6503.T"
+    pattern_start: ""
+    note: ""
+  - name: オムロン
+    ticker: "6645.T"
+    pattern_start: ""
+    note: ""
+  - name: キーエンス
+    ticker: "6861.T"
+    pattern_start: ""
+    note: ""
+  - name: ABEJA
+    ticker: "5574.T"
+    pattern_start: ""
+    note: ""
+  - name: Tier IV
+    ticker: ""
+    pattern_start: ""
+    note: "非上場 or ティッカー未確認 — 要確認"
+  - name: 円谷フィールズ
+    ticker: "2767.T"
+    pattern_start: ""
+    note: "要確認"
