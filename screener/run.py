@@ -68,7 +68,7 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict]:
 
     cfg = yaml.safe_load(CONFIG.read_text(encoding="utf-8")) or {}
     ref_tickers = [(wp.get("ticker") or "").strip() for wp in cfg.get("winning_stocks", [])]
-    tickers = list(dict.fromkeys(universe["ticker"].tolist() + [t for t in ref_tickers if t]))
+    tickers = list(dict.fromkeys(universe["ticker"].tolist() + [t for t in ref_tickers if t] + [backtest.MARKET_TICKER]))
 
     # バックテスト用に10年分取得し、毎日の判定(5年位置など)には直近5年分だけを使う
     closes_full = data.download_closes(tickers, period="10y")

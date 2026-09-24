@@ -811,9 +811,15 @@ async function loadBacktest(box) {
   box.replaceChildren(
     el("p", { class: "sub", text: `${bt.period.from}〜${bt.period.to} の全${bt.stocks.toLocaleString()}銘柄で、今と同じ条件(底値圏+3ヶ月底打ち)のシグナルが出た${bt.events.toLocaleString()}回について、翌営業日の終値で買ったと仮定して集計。` }),
     el("h5", { text: "何日持つと良かったか" }),
-    table(["保有", "件数", "平均", "勝率", "適当に買った平均"],
-      bt.hold.map((r) => [`${r.days}日`, (r.n || 0).toLocaleString(), f(r.mean), w(r.win), f(r.base_mean)])),
-    el("p", { class: "muted", style: "font-size:12px;margin:4px 0 0", text: "「適当に買った平均」= 同じ銘柄をランダムな日に買った場合。これより上なら条件に意味がある。" }),
+    table(["保有", "平均", "中央値", "勝率", "適当買い平均", "適当買い勝率"],
+      bt.hold.map((r) => [`${r.days}日`, f(r.mean), f(r.median), w(r.win), f(r.base_mean), w(r.base_win)])),
+    el("p", { class: "muted", style: "font-size:12px;margin:4px 0 0", text: "「適当買い」= 同じ銘柄をランダムな日に買った場合。これより上なら条件に意味がある。" }),
+    ...(bt.by_regime && bt.by_regime.length ? [
+      el("h5", { text: "相場全体の地合い別" }),
+      table(["地合い", "60日平均", "60日勝率", "120日平均", "120日勝率"],
+        bt.by_regime.map((r) => [r.regime === "up" ? "TOPIX上向き" : "TOPIX下向き", f(r.h60.mean), w(r.h60.win), f(r.h120.mean), w(r.h120.win)])),
+      el("p", { class: "muted", style: "font-size:12px;margin:4px 0 0", text: "上向き/下向き = シグナル日にTOPIXが200日移動平均より上/下だったか。" }),
+    ] : []),
     el("h5", { text: "利確・損切りの組み合わせ(平均リターン上位10)" }),
     table(["利確", "損切り", "平均", "勝率", "平均日数"],
       bt.grid.slice(0, 10).map((r) => [`+${Math.round(r.tp * 100)}%`, r.sl === "floor" ? "底値割れ" : `-${Math.round(r.sl * 100)}%`, f(r.mean), w(r.win), `${Math.round(r.avg_days)}日`]), 0),

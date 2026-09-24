@@ -50,10 +50,27 @@ def _extract_closes(raw: pd.DataFrame, tickers: list[str]) -> dict[str, pd.Serie
     for t in closes.columns:
         s = closes[t].dropna()
         s = s[s > 0]
+        s = _drop_glitches(s)
         if len(s) >= 30:
             s.index = pd.to_datetime(s.index).tz_localize(None)
             out[str(t)] = s.astype(float)
     return out
+
+
+def _drop_glitches(s: pd.Series) -> pd.Series:
+    """
+    1日で3倍超 / 3分の1未満になるような値動きは、日本株の値幅制限上ほぼあり得ないので
+    データ異常(分割の未調整・誤データ)とみなし、最後の異常より後ろのデータだけ残す。
+    (初回のバックテストで、こうした異常値のせいで平均リターンが+45,000%のように壊れたため)
+    """
+    if len(s) < 2:
+        return s
+    ratio = s / s.shift(1)
+    bad = (ratio > 3) | (ratio < 1 / 3)
+    if not bad.any():
+        return s
+    last_bad = bad[bad].index[-1]
+    return s.loc[s.index >= last_bad]
 
 
 def download_closes(tickers: list[str], period: str = "5y", batch_size: int = 150) -> dict[str, pd.Series]:

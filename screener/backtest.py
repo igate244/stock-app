@@ -93,13 +93,21 @@ def _simulate(path: np.ndarray, tp: float, sl, floor_ret: float) -> tuple[float,
     return float(path[-1]), len(path) - 1
 
 
+def _robust_mean(a: np.ndarray) -> float:
+    """上下1%を端の値に丸めてから平均(一部の異常値や超大化け1銘柄に平均が引っ張られないように)。"""
+    if len(a) < 20:
+        return float(a.mean())
+    lo, hi = np.percentile(a, [1, 99])
+    return float(np.clip(a, lo, hi).mean())
+
+
 def _stats(x: list[float]) -> dict:
     a = np.asarray(x, dtype=float)
     if not len(a):
         return {"n": 0}
     return {
         "n": int(len(a)),
-        "mean": round(float(a.mean()), 4),
+        "mean": round(_robust_mean(a), 4),
         "median": round(float(np.median(a)), 4),
         "win": round(float((a > 0).mean()), 4),
         "p25": round(float(np.percentile(a, 25)), 4),
@@ -107,7 +115,19 @@ def _stats(x: list[float]) -> dict:
     }
 
 
+MARKET_TICKER = "1306.T"  # TOPIX連動ETF。相場全体の地合いの判定に使う
+
+
+def _market_uptrend(market: pd.Series | None) -> pd.Series | None:
+    """日付→「TOPIXが200日移動平均より上か」。"""
+    if market is None or len(market) < 250:
+        return None
+    return (market > market.rolling(200).mean()).where(market.rolling(200).mean().notna())
+
+
 def run(closes: dict[str, pd.Series]) -> dict:
+    up = _market_uptrend(closes.get(MARKET_TICKER))
+    regime = {"up": {60: [], 120: []}, "down": {60: [], 120: []}}
     hold = {h: [] for h in HOLD_DAYS}
     base = {h: [] for h in HOLD_DAYS}
     grid = {(tp, sl): [] for tp in TP_LIST for sl in SL_LIST}
@@ -119,6 +139,8 @@ def run(closes: dict[str, pd.Series]) -> dict:
 
     rng = np.random.default_rng(0)
     for ticker, ser in closes.items():
+        if ticker == MARKET_TICKER:
+            continue
         close = ser.to_numpy(dtype=float)
         dates = ser.index
         n = len(close)
@@ -142,12 +164,18 @@ def run(closes: dict[str, pd.Series]) -> dict:
             e = t + 1
             entry = close[e]
             events_all += 1
+            reg = None
+            if up is not None:
+                v = up.asof(dates[t])
+                reg = None if pd.isna(v) else ("up" if bool(v) else "down")
             for h in HOLD_DAYS:
                 if e + h < n:
                     r = close[e + h] / entry - 1
                     hold[h].append(r)
                     if h == 60:
                         by_year.setdefault(dates[e].year, []).append(r)
+                    if reg and h in (60, 120):
+                        regime[reg][h].append(r)
             if e + 60 < n:
                 p60 = close[e : e + 61] / entry - 1
                 mae60.append(float(p60.min()))
@@ -174,11 +202,12 @@ def run(closes: dict[str, pd.Series]) -> dict:
             "tp": tp,
             "sl": sl,
             "n": int(len(rets)),
-            "mean": round(float(rets.mean()), 4),
+            "mean": round(_robust_mean(rets), 4),
+            "median": round(float(np.median(rets)), 4),
             "win": round(float((rets > 0).mean()), 4),
             "avg_days": round(float(days.mean()), 1),
             # 1営業日あたりの平均リターン(資金効率の目安)
-            "per_day": round(float(rets.mean() / max(days.mean(), 1)), 5),
+            "per_day": round(_robust_mean(rets) / max(float(days.mean()), 1), 5),
         })
     grid_rows.sort(key=lambda r: r["mean"], reverse=True)
 
@@ -210,11 +239,16 @@ def run(closes: dict[str, pd.Series]) -> dict:
             "mfe_p25": pct(mfe60, 25), "mfe_med": pct(mfe60, 50), "mfe_p75": pct(mfe60, 75),
         },
         "by_year": [{"year": y, **_stats(v)} for y, v in sorted(by_year.items())],
+        "by_regime": [
+            {"regime": "up", "label": "相場全体が上向き(TOPIXが200日線より上)", "h60": _stats(regime["up"][60]), "h120": _stats(regime["up"][120])},
+            {"regime": "down", "label": "相場全体が下向き(TOPIXが200日線より下)", "h60": _stats(regime["down"][60]), "h120": _stats(regime["down"][120])},
+        ] if up is not None else [],
         "caveats": [
             "現在上場中の銘柄だけで計算(上場廃止銘柄が入らない分、成績は実際より良く出やすい)",
             "手数料・スリッページは含まない",
             "約10年分の株価で検証(シグナルは約8年分)。この期間の相場環境に依存する",
             "利確・損切りは終値で判定(ザラ場の値動きは考慮しない)",
+            "平均は上下1%の極端な値を丸めて計算(データ異常や一部の超大化けに引っ張られないように)",
         ],
     }
 
@@ -228,19 +262,24 @@ def summary_markdown(bt: dict) -> str:
         f"期間 {bt['period']['from']} 〜 {bt['period']['to']} / 対象 {bt['stocks']} 銘柄 / シグナル {bt['events']} 回({bt['stocks_with_events']} 銘柄)",
         "",
         "### 保有期間別(シグナル翌日終値で買い)",
-        "| 保有 | 件数 | 平均 | 中央値 | 勝率 | ランダム買い平均 | ランダム勝率 |",
-        "|---|---|---|---|---|---|---|",
+        "| 保有 | 件数 | 平均 | 中央値 | 勝率 | ランダム平均 | ランダム中央値 | ランダム勝率 |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for r in bt["hold"]:
-        lines.append(f"| {r['days']}日 | {r.get('n', 0)} | {f(r.get('mean'))} | {f(r.get('median'))} | {w(r.get('win'))} | {f(r.get('base_mean'))} | {w(r.get('base_win'))} |")
-    lines += ["", "### 利確/損切りルール別 上位15(最大250営業日保有)", "| 利確 | 損切り | 件数 | 平均 | 勝率 | 平均保有日数 |", "|---|---|---|---|---|---|"]
-    for r in bt["grid"][:15]:
+        lines.append(f"| {r['days']}日 | {r.get('n', 0)} | {f(r.get('mean'))} | {f(r.get('median'))} | {w(r.get('win'))} | {f(r.get('base_mean'))} | {f(r.get('base_median'))} | {w(r.get('base_win'))} |")
+    lines += ["", "### 利確/損切りルール別(全30通り・平均順、最大250営業日保有)", "| 利確 | 損切り | 件数 | 平均 | 中央値 | 勝率 | 平均保有日数 | 1日あたり |", "|---|---|---|---|---|---|---|---|"]
+    for r in bt["grid"]:
         sl = "底値割れ" if r["sl"] == "floor" else f"-{r['sl'] * 100:.0f}%"
-        lines.append(f"| +{r['tp'] * 100:.0f}% | {sl} | {r['n']} | {f(r['mean'])} | {w(r['win'])} | {r['avg_days']} |")
+        lines.append(f"| +{r['tp'] * 100:.0f}% | {sl} | {r['n']} | {f(r['mean'])} | {f(r.get('median'))} | {w(r['win'])} | {r['avg_days']} | {r['per_day'] * 100:.3f}% |")
     ex = bt["excursion60"]
     lines += ["", "### 60日保有中の最大含み損/含み益", f"最大含み損: 25%点 {f(ex['mae_p25'])} / 中央値 {f(ex['mae_med'])} / 75%点 {f(ex['mae_p75'])}",
               f"最大含み益: 25%点 {f(ex['mfe_p25'])} / 中央値 {f(ex['mfe_med'])} / 75%点 {f(ex['mfe_p75'])}",
               "", "### 年別(60日保有)", "| 年 | 件数 | 平均 | 勝率 |", "|---|---|---|---|"]
     for r in bt["by_year"]:
         lines.append(f"| {r['year']} | {r.get('n', 0)} | {f(r.get('mean'))} | {w(r.get('win'))} |")
+    if bt.get("by_regime"):
+        lines += ["", "### 相場全体の地合い別", "| 地合い | 60日 件数 | 60日 平均 | 60日 中央値 | 60日 勝率 | 120日 平均 | 120日 中央値 | 120日 勝率 |", "|---|---|---|---|---|---|---|---|"]
+        for r in bt["by_regime"]:
+            a, b = r["h60"], r["h120"]
+            lines.append(f"| {r['label']} | {a.get('n', 0)} | {f(a.get('mean'))} | {f(a.get('median'))} | {w(a.get('win'))} | {f(b.get('mean'))} | {f(b.get('median'))} | {w(b.get('win'))} |")
     return "\n".join(lines) + "\n"
