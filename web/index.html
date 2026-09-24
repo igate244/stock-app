@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>勝ちパターン探知機</title>
-<meta name="theme-color" content="#102442">
+<meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0c0f" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="勝ちパターン">
@@ -14,50 +15,62 @@
 <style>
 :root {
   color-scheme: light;
-  --page: #f9f9f7;
-  --surface: #fcfcfb;
+  --page: #f4f5f7;
+  --surface: #ffffff;
   --raised: #ffffff;
-  --ink: #0b0b0b;
-  --ink2: #52514e;
-  --muted: #898781;
-  --grid: #e1e0d9;
-  --axis: #c3c2b7;
-  --border: rgba(11, 11, 11, 0.10);
-  --wash: rgba(11, 11, 11, 0.045);
-  --accent: #2a78d6;
-  --accent-ink: #1c5cab;
-  --accent-wash: rgba(42, 120, 214, 0.10);
-  --s1: #2a78d6;
-  --s2: #eb6834;
-  --good: #0ca30c;
-  --good-ink: #006300;
-  --f1: #86b6ef; --f2: #5598e7; --f3: #2a78d6; --f4: #1c5cab;
-  --bar: #102442;
-  --shadow: 0 8px 28px rgba(11, 11, 11, 0.12);
+  --ink: #0f1115;
+  --ink2: #4a4f59;
+  --muted: #8a909b;
+  --grid: #e8eaee;
+  --axis: #cfd3da;
+  --border: rgba(15, 17, 21, 0.08);
+  --wash: rgba(15, 17, 21, 0.05);
+  --accent: #4f5bd5;
+  --accent-ink: #3a45b8;
+  --accent-wash: rgba(79, 91, 213, 0.10);
+  --s1: #4f5bd5;
+  --s2: #f06a3c;
+  --good: #12a150;
+  --good-ink: #0b7a3b;
+  --good-wash: rgba(18, 161, 80, 0.12);
+  --warn: #d97706;
+  --warn-ink: #a55a00;
+  --warn-wash: rgba(217, 119, 6, 0.12);
+  --f1: #c7cbf3; --f2: #9aa2ea; --f3: #6f79de; --f4: #4f5bd5;
+  --bar: rgba(244, 245, 247, 0.82);
+  --shadow-sm: 0 1px 2px rgba(15, 17, 21, 0.04), 0 2px 8px rgba(15, 17, 21, 0.05);
+  --shadow: 0 12px 40px rgba(15, 17, 21, 0.16);
+  --hero: linear-gradient(135deg, #1e2358 0%, #3b3f9e 55%, #5b4fd1 100%);
 }
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --page: #0d0d0d;
-    --surface: #1a1a19;
-    --raised: #222220;
-    --ink: #ffffff;
-    --ink2: #c3c2b7;
-    --muted: #898781;
-    --grid: #2c2c2a;
-    --axis: #383835;
-    --border: rgba(255, 255, 255, 0.10);
+    --page: #0b0c0f;
+    --surface: #15171c;
+    --raised: #1c1f25;
+    --ink: #f3f4f6;
+    --ink2: #b4b9c3;
+    --muted: #7c828e;
+    --grid: #262a31;
+    --axis: #353a43;
+    --border: rgba(255, 255, 255, 0.08);
     --wash: rgba(255, 255, 255, 0.06);
-    --accent: #3987e5;
-    --accent-ink: #86b6ef;
-    --accent-wash: rgba(57, 135, 229, 0.16);
-    --s1: #3987e5;
-    --s2: #d95926;
-    --good: #0ca30c;
-    --good-ink: #0ca30c;
-    --f1: #184f95; --f2: #256abf; --f3: #3987e5; --f4: #6da7ec;
-    --bar: #0b1a30;
-    --shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+    --accent: #7c86f0;
+    --accent-ink: #a9b0ff;
+    --accent-wash: rgba(124, 134, 240, 0.16);
+    --s1: #7c86f0;
+    --s2: #f07d52;
+    --good: #2cc26b;
+    --good-ink: #4fd98a;
+    --good-wash: rgba(44, 194, 107, 0.14);
+    --warn: #f0a23b;
+    --warn-ink: #f5b95e;
+    --warn-wash: rgba(240, 162, 59, 0.14);
+    --f1: #2e3470; --f2: #444ca8; --f3: #5f68d6; --f4: #7c86f0;
+    --bar: rgba(11, 12, 15, 0.78);
+    --shadow-sm: 0 0 0 1px rgba(255, 255, 255, 0.04);
+    --shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    --hero: linear-gradient(135deg, #171a45 0%, #2b2f7c 55%, #4637a8 100%);
   }
 }
 * { box-sizing: border-box; }
@@ -67,6 +80,8 @@ body {
   background: var(--page);
   color: var(--ink);
   font: 15px/1.55 system-ui, -apple-system, "Hiragino Sans", "Segoe UI", "Noto Sans JP", sans-serif;
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
   padding-bottom: env(safe-area-inset-bottom);
 }
 button, input, select { font: inherit; color: inherit; }
@@ -76,113 +91,152 @@ a { color: var(--accent-ink); }
 
 /* ---- app bar ---- */
 .app-bar {
+  position: sticky; top: 0; z-index: 10;
   background: var(--bar);
-  color: #fff;
+  -webkit-backdrop-filter: saturate(180%) blur(18px); backdrop-filter: saturate(180%) blur(18px);
+  border-bottom: 1px solid var(--border);
   padding-top: env(safe-area-inset-top);
 }
-.app-bar .wrap { padding-block: 14px 16px; }
-.app-bar h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: 0.02em; }
-.app-bar .meta { margin-top: 2px; font-size: 13px; color: rgba(255, 255, 255, 0.72); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
-.badge-warn { background: #fab219; color: #0b0b0b; border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 600; }
+.app-bar .wrap { padding-block: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.logo { width: 30px; height: 30px; border-radius: 9px; background: var(--hero); display: grid; place-items: center; flex: none; }
+.logo svg { width: 18px; height: 18px; }
+.app-bar h1 { margin: 0; font-size: 17px; font-weight: 800; letter-spacing: 0.01em; line-height: 1.2; }
+.app-bar .meta { font-size: 11.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; }
+.icon-btn { width: 38px; height: 38px; border-radius: 12px; border: 0; background: var(--wash); display: grid; place-items: center; flex: none; color: var(--ink2); }
+.icon-btn svg { width: 18px; height: 18px; }
+.badge-warn { background: var(--warn-wash); color: var(--warn-ink); border-radius: 999px; padding: 0 8px; font-size: 11px; font-weight: 700; }
 
-main.wrap { padding-block: 14px 32px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+main.wrap { padding-block: 16px 40px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 main.wrap > * { min-width: 0; }
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
-.card h2 { margin: 0; font-size: 15px; font-weight: 700; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 16px; box-shadow: var(--shadow-sm); }
+.card h2 { margin: 0; font-size: 15px; font-weight: 800; letter-spacing: 0.01em; }
 .row-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .sub { color: var(--ink2); font-size: 13px; }
 .muted { color: var(--muted); }
+.eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); }
 
-.banner { background: var(--accent-wash); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; font-size: 13px; color: var(--ink2); }
+.banner { background: var(--accent-wash); border-radius: 14px; padding: 10px 12px; font-size: 13px; color: var(--ink2); }
 .banner strong { color: var(--ink); }
 
-/* ---- theme chips ---- */
-.genre { margin-top: 12px; }
-.genre-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+/* ---- 地合いカード ---- */
+.hero { background: var(--hero); color: #fff; border: 0; padding: 18px 18px 14px; position: relative; overflow: hidden; }
+.hero::after { content: ""; position: absolute; right: -60px; top: -60px; width: 180px; height: 180px; border-radius: 50%; background: rgba(255, 255, 255, 0.07); }
+.hero .eyebrow { color: rgba(255, 255, 255, 0.7); }
+.hero-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; position: relative; z-index: 1; }
+.verdict { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.16); }
+.verdict.good { background: rgba(44, 194, 107, 0.28); }
+.verdict.bad { background: rgba(240, 162, 59, 0.3); }
+.hero-main { margin-top: 6px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; position: relative; z-index: 1; }
+.hero-main b { font-size: 30px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.1; }
+.hero-main span { font-size: 13px; color: rgba(255, 255, 255, 0.8); }
+.spark { display: block; width: 100%; height: 56px; margin-top: 8px; position: relative; z-index: 1; }
+.hero-note { margin: 8px 0 0; font-size: 12.5px; color: rgba(255, 255, 255, 0.85); position: relative; z-index: 1; }
+.hero-note b { color: #fff; }
+
+/* ---- フィルター ---- */
+.filterbar { display: flex; gap: 8px; align-items: center; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px; }
+.filterbar::-webkit-scrollbar { display: none; }
+.fbtn {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 6px 14px;
+  border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-size: 14px; font-weight: 700; box-shadow: var(--shadow-sm);
+}
+.fbtn svg { width: 16px; height: 16px; }
+.fbtn .count { background: var(--accent); color: #fff; border-radius: 999px; font-size: 11px; min-width: 18px; height: 18px; padding: 0 5px; display: inline-grid; place-items: center; }
+.fbtn .count[hidden] { display: none; }
+.achip {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 4px 8px 4px 12px; border-radius: 999px;
+  border: 0; background: var(--accent-wash); color: var(--accent-ink); font-size: 13px; font-weight: 600;
+}
+.achip i { font-style: normal; width: 18px; height: 18px; border-radius: 50%; background: rgba(79, 91, 213, 0.18); display: inline-grid; place-items: center; font-size: 11px; }
+.fhint { flex: none; font-size: 13px; color: var(--muted); }
+
+.genre { margin-top: 16px; }
+.genre-label { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 8px; letter-spacing: 0.04em; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px;
-  min-height: 36px; padding: 6px 12px;
+  min-height: 38px; padding: 6px 14px;
   border-radius: 999px; border: 1px solid var(--border);
-  background: var(--raised); color: var(--ink);
+  background: var(--surface); color: var(--ink);
   font-size: 14px; line-height: 1.2;
-  -webkit-tap-highlight-color: transparent;
+  -webkit-tap-highlight-color: transparent; transition: background 0.15s, border-color 0.15s;
 }
-.chip .box {
-  width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--axis);
-  display: inline-grid; place-items: center; flex: none;
-}
-.chip[aria-pressed="true"] { background: var(--accent-wash); border-color: var(--accent); color: var(--ink); font-weight: 600; }
-.chip[aria-pressed="true"] .box { background: var(--accent); border-color: var(--accent); }
-.chip[aria-pressed="true"] .box::after { content: ""; width: 8px; height: 4px; border: 2px solid #fff; border-top: 0; border-right: 0; transform: rotate(-45deg) translate(1px, -1px); }
-.chip .n { color: var(--muted); font-weight: 400; font-size: 12px; }
+.chip .box { display: none; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+.chip[aria-pressed="true"] .n { color: rgba(255, 255, 255, 0.8); }
+.chip .n { color: var(--muted); font-weight: 500; font-size: 12px; }
 .chip.zero { color: var(--muted); }
-.btn-text { background: none; border: 0; color: var(--accent-ink); font-size: 14px; padding: 6px 4px; }
+.chip.zero[aria-pressed="true"] { color: #fff; }
+.btn-text { background: none; border: 0; color: var(--accent-ink); font-size: 14px; font-weight: 600; padding: 6px 4px; }
 .btn-text:disabled { color: var(--muted); cursor: default; }
-details.sectors { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
-details.sectors summary { list-style: none; display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 600; min-height: 36px; }
-details.sectors summary::-webkit-details-marker { display: none; }
-details.sectors summary::after { content: "＋"; color: var(--muted); font-weight: 400; }
-details.sectors[open] summary::after { content: "－"; }
-details.sectors .chips { margin-top: 8px; }
-.selection-line { margin-top: 12px; font-size: 13px; color: var(--ink2); }
+#fpanel { padding-bottom: 0; }
+.fsheet-foot { position: sticky; bottom: 0; background: var(--page); padding: 12px 0 calc(14px + env(safe-area-inset-bottom)); margin-top: 16px; display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border); }
+.fsheet-foot .btn { flex: 1; }
+.selection-line { font-size: 13px; color: var(--ink2); }
 
 /* ---- funnel ---- */
-.funnel { margin-top: 10px; display: grid; gap: 4px; }
+.funnel { margin-top: 12px; display: grid; gap: 2px; }
 .f-row {
-  display: grid; grid-template-columns: 7.2em 1fr 3.6em; align-items: center; gap: 10px;
-  width: 100%; background: none; border: 0; padding: 7px 4px; border-radius: 8px; text-align: left;
+  display: grid; grid-template-columns: 6.6em 1fr 3.4em; align-items: center; gap: 10px;
+  width: 100%; background: none; border: 0; padding: 6px 4px; border-radius: 10px; text-align: left;
   -webkit-tap-highlight-color: transparent;
 }
 .f-row:active, .f-row:hover { background: var(--wash); }
-.f-row[aria-current="true"] { background: var(--wash); }
+.f-row[aria-current="true"] { background: var(--accent-wash); }
 .f-label { font-size: 13px; color: var(--ink2); }
-.f-track { height: 14px; border-radius: 0 4px 4px 0; position: relative; }
-.f-bar { height: 14px; border-radius: 0 4px 4px 0; min-width: 3px; }
-.f-num { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
-.f-drop { font-size: 12px; color: var(--muted); padding-left: calc(7.2em + 14px); margin-top: -2px; margin-bottom: 2px; }
+.f-track { height: 10px; border-radius: 999px; background: var(--wash); overflow: hidden; }
+.f-bar { height: 10px; border-radius: 999px; min-width: 4px; }
+.f-num { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+.f-drop { font-size: 12px; color: var(--muted); padding-left: calc(6.6em + 14px); margin-top: -4px; }
 
 /* ---- list ---- */
-.tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.tabs-wrap { position: sticky; top: calc(58px + env(safe-area-inset-top)); z-index: 5; background: var(--page); margin: 0 -16px; padding: 8px 16px 6px; }
+.tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; background: var(--wash); border-radius: 14px; padding: 4px; }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
-  flex: none; min-height: 36px; padding: 6px 12px; border-radius: 999px;
-  border: 1px solid var(--border); background: var(--surface); font-size: 14px; color: var(--ink2);
+  flex: 1 0 auto; min-height: 36px; padding: 6px 12px; border-radius: 10px;
+  border: 0; background: none; font-size: 13.5px; color: var(--ink2); white-space: nowrap;
 }
-.tab[aria-selected="true"] { background: var(--ink); color: var(--page); border-color: var(--ink); font-weight: 600; }
-.tab .n { font-variant-numeric: tabular-nums; margin-left: 4px; opacity: 0.75; }
-.tools { display: flex; gap: 8px; margin-top: 10px; }
+.tab[aria-selected="true"] { background: var(--raised); color: var(--ink); font-weight: 700; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.tab .n { font-variant-numeric: tabular-nums; margin-left: 4px; opacity: 0.6; font-size: 12px; }
+.tools { display: flex; gap: 8px; margin-top: 8px; }
 .tools input, .tools select {
-  min-height: 40px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); padding: 8px 10px;
+  min-height: 42px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); padding: 8px 12px;
 }
 .tools input { flex: 1; min-width: 0; }
 .tools select { flex: none; max-width: 42%; }
-.tab-note { font-size: 13px; color: var(--ink2); margin: 10px 2px 0; }
-ul.list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.tab-note { font-size: 12.5px; color: var(--muted); margin: 10px 2px 0; }
+ul.list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
 .item {
   width: 100%; text-align: left; display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px;
-  -webkit-tap-highlight-color: transparent;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 14px 16px;
+  box-shadow: var(--shadow-sm); -webkit-tap-highlight-color: transparent; transition: transform 0.1s;
+  position: relative; overflow: hidden;
 }
-.item:active { background: var(--wash); }
-.item .name { font-weight: 700; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item:active { transform: scale(0.99); background: var(--wash); }
+.item.best { border-color: rgba(79, 91, 213, 0.35); }
+.item.best::before { content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
+.item .name { font-weight: 800; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .code { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .metric { grid-row: 1 / span 2; grid-column: 2; text-align: right; }
-.item .metric b { display: block; font-size: 20px; font-weight: 700; line-height: 1.1; }
+.item .metric b { display: block; font-size: 22px; font-weight: 800; line-height: 1.1; letter-spacing: -0.01em; }
 .item .metric small { color: var(--muted); font-size: 11px; }
-.item .facts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--ink2); margin-top: 4px; }
+.item .facts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; color: var(--ink2); margin-top: 8px; }
+.item .facts span { background: var(--wash); border-radius: 8px; padding: 2px 8px; }
+.item .facts span.star { background: var(--accent-wash); color: var(--accent-ink); font-weight: 700; }
 .empty { text-align: center; color: var(--ink2); padding: 28px 12px; font-size: 14px; }
-.more { width: 100%; margin-top: 10px; min-height: 44px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); color: var(--accent-ink); }
+.more { width: 100%; margin-top: 10px; min-height: 46px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); color: var(--accent-ink); font-weight: 700; }
 
 .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 2px 9px; border-radius: 999px; background: var(--wash); color: var(--ink2); }
-.pill.pass { color: var(--good-ink); background: rgba(12, 163, 12, 0.12); font-weight: 600; }
+.pill.pass { color: var(--good-ink); background: var(--good-wash); font-weight: 700; }
 .pill.pass::before { content: "✓"; font-weight: 700; }
 
 footer.foot { font-size: 13px; color: var(--ink2); display: grid; gap: 10px; }
 footer.foot .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  min-height: 44px; padding: 10px 16px; border-radius: 12px; border: 1px solid var(--border);
+  min-height: 46px; padding: 10px 16px; border-radius: 14px; border: 1px solid var(--border);
   background: var(--surface); color: var(--ink); text-decoration: none; font-weight: 600; font-size: 14px;
 }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -195,7 +249,7 @@ details.help ul { margin: 6px 0 0; padding-left: 1.2em; }
 .sheet .scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.42); }
 .sheet .panel {
   position: relative; width: 100%; max-width: 560px; max-height: 94dvh; overflow-y: auto; overscroll-behavior: contain;
-  background: var(--page); border-radius: 18px 18px 0 0; box-shadow: var(--shadow);
+  background: var(--page); border-radius: 24px 24px 0 0; box-shadow: var(--shadow);
   padding: 0 16px calc(24px + env(safe-area-inset-bottom));
   animation: up 0.18s ease-out;
 }
@@ -208,13 +262,16 @@ details.help ul { margin: 6px 0 0; padding-left: 1.2em; }
 .d-head .code { color: var(--muted); font-size: 13px; margin-top: 2px; }
 .d-head .price { margin-top: 8px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .d-head .price b { font-size: 26px; font-weight: 700; }
-.why { margin-top: 12px; font-size: 14px; color: var(--ink2); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+.why { margin-top: 12px; font-size: 14px; color: var(--ink2); background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; }
+.plan { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.plan .stat .v { font-size: 17px; white-space: nowrap; }
+.plan-note { font-size: 12px; color: var(--muted); margin-top: 6px; }
 .section { margin-top: 16px; }
 .section h4 { margin: 0 0 8px; font-size: 14px; color: var(--ink2); font-weight: 700; }
 .seg { display: inline-flex; background: var(--wash); border-radius: 10px; padding: 3px; gap: 2px; }
 .seg button { border: 0; background: none; border-radius: 8px; min-height: 32px; padding: 4px 12px; font-size: 13px; color: var(--ink2); }
 .seg button[aria-pressed="true"] { background: var(--raised); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
-.chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 10px 6px; margin-top: 10px; }
+.chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 12px 10px 6px; margin-top: 10px; }
 .chart-title { font-size: 13px; color: var(--ink2); padding: 0 4px 4px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .legend { display: flex; gap: 12px; font-size: 12px; color: var(--ink2); }
 .legend i { display: inline-block; width: 14px; height: 2px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
@@ -230,11 +287,11 @@ details.help ul { margin: 6px 0 0; padding-left: 1.2em; }
 .tip .r { display: flex; align-items: center; gap: 6px; }
 .tip .r i { width: 12px; height: 2px; border-radius: 2px; }
 .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-.stat { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 10px 12px; }
 .stat .l { font-size: 12px; color: var(--ink2); }
 .stat .v { font-size: 20px; font-weight: 700; line-height: 1.25; }
 .stat .h { font-size: 11px; color: var(--muted); }
-.box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px; font-size: 14px; }
+.box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; font-size: 14px; }
 .news { list-style: none; padding: 0; margin: 0; display: grid; gap: 2px; }
 .news a { display: block; text-decoration: none; color: var(--ink); padding: 8px 2px; border-bottom: 1px solid var(--border); }
 .news li:last-child a { border-bottom: 0; }
@@ -270,8 +327,11 @@ details.bt[open] summary::after { content: "－"; }
 <body>
 <header class="app-bar">
   <div class="wrap">
-    <h1>勝ちパターン探知機</h1>
-    <div class="meta" id="meta">読み込み中…</div>
+    <div class="brand">
+      <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg></span>
+      <div><h1>勝ちパターン探知機</h1><div class="meta" id="meta">読み込み中…</div></div>
+    </div>
+    <button class="icon-btn" aria-label="再読み込み" onclick="location.reload()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
   </div>
 </header>
 
@@ -282,6 +342,10 @@ details.bt[open] summary::after { content: "－"; }
 <div class="sheet" id="sheet" hidden>
   <div class="scrim" data-close></div>
   <div class="panel" role="dialog" aria-modal="true" aria-labelledby="d-title" id="panel"></div>
+</div>
+<div class="sheet" id="fsheet" hidden>
+  <div class="scrim" data-fclose></div>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="f-title" id="fpanel"></div>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -390,6 +454,7 @@ function showNoData() {
 function start(data, demo) {
   state.data = data;
   state.demo = demo;
+  for (const x of data.stocks || []) if (x.n) x.n = x.n.normalize("NFKC"); // 全角英数の銘柄名を読みやすく
   const knownThemes = new Set(Object.values(data.genres || {}).flat());
   state.themes = new Set(recall("themes", []).filter((t) => knownThemes.has(t)));
   state.sectors = new Set(recall("sectors", []).filter((s) => (data.sectors || []).includes(s)));
@@ -407,7 +472,7 @@ function renderShell() {
   const meta = $("#meta");
   meta.replaceChildren(...[
     el("span", { text: `${gen.getMonth() + 1}/${gen.getDate()} ${String(gen.getHours()).padStart(2, "0")}:${String(gen.getMinutes()).padStart(2, "0")} 更新` }),
-    el("span", { text: `全${d.universe_count.toLocaleString()}銘柄` }),
+    el("span", { text: `${d.universe_count.toLocaleString()}銘柄` }),
     !state.demo && ageDays > 4 ? el("span", { class: "badge-warn", text: "更新が止まってるかも" }) : null,
     state.demo ? el("span", { class: "badge-warn", text: "デモ" }) : null,
   ].filter(Boolean));
@@ -419,29 +484,16 @@ function renderShell() {
       el("strong", { text: "デモ表示中:" }), " 銘柄名・株価はすべて架空です。本番は毎日の自動計算結果が表示されます。"));
   }
 
-  /* テーマ選択 */
-  const picker = el("section", { class: "card", "aria-labelledby": "h-theme" });
-  const clearBtn = el("button", { class: "btn-text", id: "clear", onclick: () => { state.themes.clear(); state.sectors.clear(); persistSel(); render(); } }, "選択を解除");
-  picker.append(el("div", { class: "row-head" }, el("h2", { id: "h-theme", text: "テーマ" }), clearBtn));
+  /* 今の地合い */
+  if (d.market) main.append(marketCard(d.market));
 
-  const counts = themeCounts();
-  for (const [genre, themes] of Object.entries(d.genres || {})) {
-    const chips = el("div", { class: "chips" });
-    for (const t of themes) chips.append(chip(t, "theme", counts.themes[t] || 0));
-    picker.append(el("div", { class: "genre" }, el("div", { class: "genre-label", text: genre }), chips));
-  }
-  const secChips = el("div", { class: "chips" });
-  for (const s of d.sectors || []) secChips.append(chip(s, "sector", counts.sectors[s] || 0));
-  const det = el("details", { class: "sectors", id: "sec-det" },
-    el("summary", {}, el("span", { id: "sec-sum", text: "業種(東証33業種)で選ぶ" })), secChips);
-  if (recall("secOpen", false)) det.open = true;
-  det.addEventListener("toggle", () => store("secOpen", det.open));
-  picker.append(det, el("div", { class: "selection-line", id: "sel-line" }));
-  main.append(picker);
+  /* テーマ・業種(ボトムシートで選ぶ。画面上部には選択中のものだけ小さく表示) */
+  main.append(el("div", { class: "filterbar", id: "filterbar" }));
+  buildFilterSheet();
 
   /* 絞り込み */
   main.append(el("section", { class: "card", "aria-labelledby": "h-funnel" },
-    el("div", { class: "row-head" }, el("h2", { id: "h-funnel", text: "絞り込みの様子" }), el("span", { class: "sub", text: "タップで一覧へ" })),
+    el("div", { class: "row-head" }, el("h2", { id: "h-funnel", text: "絞り込みの様子" }), el("span", { class: "selection-line", id: "sel-line" })),
     el("div", { class: "funnel", id: "funnel" })));
 
   /* 一覧 */
@@ -454,7 +506,7 @@ function renderShell() {
   const sort = el("select", { "aria-label": "並び順", id: "sort" });
   sort.addEventListener("change", () => { state.sort = sort.value; store("sort", state.sort); state.shown = PAGE; renderList(); });
   main.append(el("section", { id: "list-sec", "aria-label": "銘柄一覧" },
-    tabs,
+    el("div", { class: "tabs-wrap" }, tabs),
     el("div", { class: "tools" }, search, sort),
     el("p", { class: "tab-note", id: "tab-note" }),
     el("ul", { class: "list", id: "list" }),
@@ -479,11 +531,112 @@ function renderShell() {
       el("ul", {},
         el("li", { text: `底値圏: 過去5年の値幅のうち下から${Math.round((p.near_low ?? 0.3) * 100)}%以内` }),
         el("li", { text: `底打ち: 直近3ヶ月で${Math.round((p.min_decline ?? 0.15) * 100)}%以上下げたあと、底から+${Math.round((p.min_rebound ?? 0.1) * 100)}%以上反発(底から3営業日以上)` }),
-        el("li", { text: `類似度: 底をつけてからの上昇カーブの形が、勝ちパターン銘柄(${(d.refs || []).join("・") || "-"})の底からの上昇とどれだけ似ているか(0〜1)` }),
+        el("li", { text: `類似度: 直近60営業日の形が、勝ちパターン銘柄(${(d.refs || []).join("・") || "-"})が大きく上がる前(底〜底の20営業日後)の形とどれだけ似ているか(相関、1に近いほど似ている)` }),
+        el("li", { text: "★ベスト条件: 過去10年の統計で成績が一番良かった「底打ち候補 × 類似度0.90以上」。相場全体が下向きの時の方が成績が良かった" }),
+        el("li", { text: "地合い: 日本株全体(全銘柄の平均)の指数が200日移動平均より上なら上向き、下なら下向き" }),
         el("li", { text: "業績・ニュースは候補に残った銘柄だけ取得(業績はyfinance、ニュースはGoogleニュース)" }))),
     el("div", { class: "muted", text: "株価: Yahoo Finance(yfinance)/銘柄一覧: JPX。投資助言ではなく、自分で判断するための参考情報。" })));
 
   syncSort();
+}
+
+/* ---------- 地合いカード ---------- */
+function marketCard(m) {
+  const card = el("section", { class: "card hero", "aria-label": "今の地合い" });
+  const verdict = m.up ? el("span", { class: "verdict bad", text: "シグナルが効きにくい地合い" }) : el("span", { class: "verdict good", text: "シグナルが効きやすい地合い" });
+  card.append(
+    el("div", { class: "hero-top" }, el("span", { class: "eyebrow", text: "今の地合い" }), verdict),
+    el("div", { class: "hero-main" }, el("b", { text: m.up ? "上向き" : "下向き" }),
+      el("span", { text: `日本株全体が200日線より ${m.gap > 0 ? "+" : ""}${(m.gap * 100).toFixed(1)}%` })));
+  const ch = m.chart;
+  if (ch && ch.y.length > 5) {
+    const W = 320, H = 56, ys = ch.y.concat(ch.ma.filter((v) => v != null));
+    const lo = Math.min(...ys), hi = Math.max(...ys), n = ch.y.length;
+    const X = (i) => (i / (n - 1)) * W, Y = (v) => H - 4 - ((v - lo) / (hi - lo || 1)) * (H - 8);
+    const path = (arr) => arr.map((v, i) => (v == null ? null : `${X(i).toFixed(1)},${Y(v).toFixed(1)}`)).filter(Boolean).map((p, i) => (i ? "L" : "M") + p).join("");
+    const svg = sv("svg", { class: "spark", viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", role: "img", "aria-label": "日本株全体の指数(実線)と200日移動平均(点線)の1年推移" });
+    svg.append(sv("path", { d: path(ch.ma), fill: "none", stroke: "rgba(255,255,255,0.55)", "stroke-width": 1.5, "stroke-dasharray": "4 4", "vector-effect": "non-scaling-stroke" }));
+    svg.append(sv("path", { d: path(ch.y), fill: "none", stroke: "#fff", "stroke-width": 2, "stroke-linejoin": "round", "vector-effect": "non-scaling-stroke" }));
+    card.append(svg);
+  }
+  const note = el("p", { class: "hero-note", text: "実線=日本株全体(1年) / 点線=200日線" });
+  card.append(note);
+  // 過去の地合い別成績(backtest.json)を後から差し込む
+  getBacktest().then((bt) => {
+    const r = (bt?.by_regime || []).reduce((o, x) => ((o[x.regime] = x), o), {});
+    const combo = (bt?.by_similarity?.combo || []).reduce((o, x) => ((o[x.key] = x), o), {});
+    if (!r.up || !r.down) return;
+    const f = (v) => `${v > 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
+    const cur = m.up ? r.up : r.down;
+    const best = combo[m.up ? "sig_90_up" : "sig_90_down"];
+    const h60 = best?.hold?.find((x) => x.days === 60);
+    note.replaceChildren(
+      "過去の同じ地合いでのシグナル: 60日後 ", el("b", { text: `${f(cur.h60.mean)}・勝率${Math.round(cur.h60.win * 100)}%` }),
+      h60 && h60.n ? [" / ★ベスト条件なら ", el("b", { text: `${f(h60.mean)}・勝率${Math.round(h60.win * 100)}%` })] : []);
+  });
+  return card;
+}
+
+let _bt = null;
+function getBacktest() {
+  if (state.demo) return Promise.resolve(null);
+  if (!_bt) _bt = fetch("data/backtest.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  return _bt;
+}
+
+/* ---------- テーマ・業種の選択(ボトムシート) ---------- */
+function buildFilterSheet() {
+  const d = state.data;
+  const panel = $("#fpanel");
+  panel.replaceChildren();
+  const counts = themeCounts();
+  panel.append(el("div", { class: "sheet-top" }, el("span", { class: "grab", "aria-hidden": "true" }),
+    el("h3", { id: "f-title", style: "margin:6px 0 0;font-size:18px", text: "テーマ・業種で絞り込む" }),
+    el("button", { class: "btn-text", id: "clear", onclick: () => { state.themes.clear(); state.sectors.clear(); persistSel(); state.shown = PAGE; render(); } }, "すべて解除")));
+  for (const [genre, themes] of Object.entries(d.genres || {})) {
+    const chips = el("div", { class: "chips" });
+    for (const t of themes) chips.append(chip(t, "theme", counts.themes[t] || 0));
+    panel.append(el("div", { class: "genre" }, el("div", { class: "genre-label", text: genre }), chips));
+  }
+  const secChips = el("div", { class: "chips" });
+  for (const x of d.sectors || []) secChips.append(chip(x, "sector", counts.sectors[x] || 0));
+  panel.append(el("div", { class: "genre" }, el("div", { class: "genre-label", text: "業種(東証33業種)" }), secChips));
+  panel.append(el("div", { class: "fsheet-foot" },
+    el("span", { class: "selection-line", id: "f-count", style: "flex:1" }),
+    el("button", { class: "btn primary", onclick: () => closeFilter() }, "結果を見る")));
+}
+function openFilter() {
+  $("#fsheet").hidden = false;
+  document.body.style.overflow = "hidden";
+  $("#fpanel").scrollTop = 0;
+  if (!history.state?.fsheet) history.pushState({ fsheet: true }, "");
+}
+function closeFilter(fromPop) {
+  const sh = $("#fsheet");
+  if (sh.hidden) return;
+  sh.hidden = true;
+  document.body.style.overflow = "";
+  if (!fromPop && history.state?.fsheet) history.back();
+}
+$("#fsheet").addEventListener("click", (e) => { if (e.target.hasAttribute("data-fclose")) closeFilter(); });
+window.addEventListener("popstate", () => closeFilter(true));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeFilter(); });
+
+function renderFilterBar(poolLen) {
+  const bar = $("#filterbar");
+  if (!bar) return;
+  const n = state.themes.size + state.sectors.size;
+  const fb = el("button", { class: "fbtn", onclick: openFilter, "aria-label": `テーマ・業種で絞り込む${n ? `(${n}件選択中)` : ""}` },
+    el("span", { html: "" }), "絞り込み", el("span", { class: "count", hidden: !n, text: String(n) }));
+  fb.firstChild.replaceWith((() => { const x = sv("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": 2.2, "stroke-linecap": "round" }); x.append(sv("path", { d: "M4 6h16M7 12h10M10 18h4" })); return x; })());
+  const kids = [fb];
+  for (const [set, kind] of [[state.themes, "theme"], [state.sectors, "sector"]]) {
+    for (const name of set) {
+      kids.push(el("button", { class: "achip", "aria-label": `${name}を解除`, onclick: () => { set.delete(name); persistSel(); state.shown = PAGE; render(); } }, name, el("i", { text: "✕" })));
+    }
+  }
+  if (!n) kids.push(el("span", { class: "fhint", text: `テーマ・業種を選ぶ(未選択=全${poolLen.toLocaleString()}銘柄)` }));
+  bar.replaceChildren(...kids);
 }
 
 function chip(name, kind, n) {
@@ -525,11 +678,10 @@ function render() {
   }
   $("#clear").disabled = !state.themes.size && !state.sectors.size;
   const nSel = state.themes.size + state.sectors.size;
-  $("#sec-sum").textContent = state.sectors.size ? `業種(東証33業種)で選ぶ ・ ${state.sectors.size}件選択中` : "業種(東証33業種)で選ぶ";
-  const names = [...state.themes, ...state.sectors];
-  $("#sel-line").textContent = nSel
-    ? `${names.slice(0, 2).join("・")}${nSel > 2 ? ` ほか${nSel - 2}件` : ""} → ${pool.length.toLocaleString()}銘柄が対象`
-    : `未選択 = 全${pool.length.toLocaleString()}銘柄が対象`;
+  $("#sel-line").textContent = nSel ? `${nSel}件で絞り込み中` : "全銘柄";
+  const nPass = pool.filter((x) => x.st === "pass").length;
+  $("#f-count").textContent = `${pool.length.toLocaleString()}銘柄 → 候補 ${nPass}`;
+  renderFilterBar(pool.length);
 
   const by = { pass: 0, nobottom: 0, high: 0, nodata: 0 };
   for (const s of pool) by[s.st] = (by[s.st] || 0) + 1;
@@ -594,7 +746,7 @@ function sortStocks(list) {
   const k = state.sort;
   const num = (v, fb) => (v == null ? fb : v);
   const cmp = {
-    best: (a, b) => num(b.ai?.score, -1) - num(a.ai?.score, -1) || num(b.sim, 0) - num(a.sim, 0),
+    best: (a, b) => isBest(b) - isBest(a) || num(b.ai?.score, -1) - num(a.ai?.score, -1) || num(b.sim, 0) - num(a.sim, 0),
     sim: (a, b) => num(b.sim, 0) - num(a.sim, 0),
     reb: (a, b) => num(b.reb, -9) - num(a.reb, -9),
     pos: (a, b) => num(a.pos, 9) - num(b.pos, 9),
@@ -610,7 +762,7 @@ function renderList(pool = selected()) {
   list = sortStocks(list);
 
   const notes = {
-    pass: "底値圏にいて、直近で底打ちした銘柄。タップでグラフ・業績・ニュース。",
+    pass: "底値圏にいて、直近で底打ちした銘柄。★=過去の統計で成績が一番良かった条件(類似度0.90以上)。",
     nobottom: "底値圏にはいるけど、まだ底打ちの形になってない銘柄。類似度が高いものは「反発前の早い段階」の可能性。",
     high: "5年の値幅の中で、まだ底値圏まで下がってない銘柄。",
     nodata: "株価が取れなかった銘柄(上場直後・売買停止など)。",
@@ -631,6 +783,10 @@ function renderList(pool = selected()) {
   }
 }
 
+// 過去の統計で一番成績が良かった条件(底打ち候補 × 上がる前の形の類似度0.90以上)
+const BEST_SIM = 0.9;
+function isBest(s) { return s.st === "pass" && (s.sim ?? 0) >= BEST_SIM ? 1 : 0; }
+
 function row(s) {
   let metric;
   if (s.st === "pass") {
@@ -642,6 +798,7 @@ function row(s) {
     metric = el("span", { class: "metric" }, el("b", { text: pct(s.pos) }), el("small", { text: "5年位置" }));
   }
   const facts = [];
+  if (isBest(s)) facts.push({ star: true, t: "★ ベスト条件" });
   if (s.st !== "nodata") {
     if (s.st === "pass") facts.push(`5年位置 ${pct(s.pos)}`);
     facts.push(`3ヶ月 ${s.dec != null ? "-" + Math.round(s.dec * 100) + "%" : "-"}→底から${pct(s.reb, true)}`);
@@ -649,11 +806,11 @@ function row(s) {
     if (s.sim_ref && s.st === "pass") facts.push(`${s.sim_ref}似`);
     if (s.sim_ref && s.st === "nobottom" && (s.sim ?? 0) >= 0.85) facts.push(`${s.sim_ref}の上昇前に似てる ${s.sim.toFixed(2)}`);
   }
-  return el("button", { class: "item", onclick: () => openDetail(s) },
+  return el("button", { class: isBest(s) ? "item best" : "item", onclick: () => openDetail(s) },
     el("span", { class: "name", text: s.n }),
     metric,
     el("span", { class: "code", text: `${code(s.t)} ・ ${s.s}` }),
-    facts.length ? el("span", { class: "facts" }, ...facts.map((f) => el("span", { text: f }))) : null);
+    facts.length ? el("span", { class: "facts" }, ...facts.map((f) => (typeof f === "string" ? el("span", { text: f }) : el("span", { class: "star", text: f.t })))) : null);
 }
 
 /* ---------- 詳細シート ---------- */
@@ -705,6 +862,8 @@ function openDetail(s) {
       s.sim != null ? stat("勝ちパターン類似度", s.sim.toFixed(2), s.sim_ref ? `${s.sim_ref}の上昇前に近い` : "比較対象なし") : null);
     panel.append(el("div", { class: "section" }, el("h4", { text: "数字" }), stats));
   }
+
+  if (s.st === "pass" && s.px != null) panel.append(planSection(s));
 
   if (s.ai) {
     panel.append(el("div", { class: "section" }, el("h4", { text: "AI評価" }),
@@ -762,6 +921,19 @@ function closeDetail(fromPop) {
 window.addEventListener("popstate", () => closeDetail(true));
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDetail(); });
 $("#sheet").addEventListener("click", (e) => { if (e.target.hasAttribute("data-close")) closeDetail(); });
+
+/* 過去の統計で一番バランスが良かった売買ルールを、今の株価に当てはめた目安 */
+function planSection(s) {
+  const low = s.reb != null ? s.px / (1 + s.reb) : null;
+  const tp15 = s.px * 1.15, tp30 = s.px * 1.3, sl20 = s.px * 0.8;
+  const mk = state.data.market;
+  return el("div", { class: "section" }, el("h4", { text: "売買の目安(過去の統計ベース)" }),
+    el("div", { class: "plan" },
+      stat("利確", `${yen(tp15)}円`, "+15%"),
+      stat("損切り", low ? `${yen(low)}円` : `${yen(sl20)}円`, low ? `底値割れ(-${Math.round((1 - low / s.px) * 100)}%)` : "-20%"),
+      stat("期限", "60日", "営業日の目安")),
+    el("div", { class: "plan-note", text: `今日の終値で買った場合。大きく狙うなら 利確+30%(${yen(tp30)}円)/損切り-20%(${yen(sl20)}円)。過去10年の${isBest(s) ? "★ベスト条件" : "底打ち候補"}の平均的な成績から算出。${mk ? (mk.up ? "今は相場全体が上向きで、過去はシグナルが効きにくかった地合い。" : "今は相場全体が下向きで、過去はシグナルが効きやすかった地合い。") : ""}投資判断は自分で。` }));
+}
 
 function stat(label, value, hint) {
   return el("div", { class: "stat" }, el("div", { class: "l", text: label }), el("div", { class: "v", text: value }), hint ? el("div", { class: "h", text: hint }) : null);
@@ -848,7 +1020,12 @@ async function loadBacktest(box) {
 
 const SIM_SHORT = {
   all: "通常シグナル全部", first_90: "通常×類似90%↑", first_80: "通常×類似80-90%", first_70: "通常×類似70-80%", first_lo: "通常×類似70%未満",
-  near_90: "底値圏×類似90%↑ 即買い", near_95: "底値圏×類似95%↑ 即買い", sig_90: "底打ち×類似90%↑", post_90: "旧方式(上昇後の形)90%↑",
+  near_90: "底値圏×類似90%↑ 即買い", near_95: "底値圏×類似95%↑ 即買い", sig_90: "★底打ち×類似90%↑", post_90: "旧方式(上昇後の形)90%↑",
+};
+
+const COMBO_SHORT = {
+  all_down: "底打ち × 下向き", all_up: "底打ち × 上向き", sig_90_down: "★ベスト × 下向き", sig_90_up: "★ベスト × 上向き",
+  near_90_down: "即買い90% × 下向き", near_90_up: "即買い90% × 上向き",
 };
 
 function simSection(bs, table, f, w) {
@@ -865,6 +1042,17 @@ function simSection(bs, table, f, w) {
       rows.map((r) => [SIM_SHORT[r.key] || r.label, (r.events || 0).toLocaleString(), f(r.from_low_med),
         `${f(hd(r, 60).mean)}\n${w(hd(r, 60).win)}`, `${f(hd(r, 120).mean)}\n${w(hd(r, 120).win)}`, `${f(hd(r, 250).mean)}\n${w(hd(r, 250).win)}`]), best),
     el("p", { class: "muted", style: "font-size:12px;margin:4px 0 0", text: "上段=平均、下段=勝率。「底から」= 買った時点で直近3ヶ月の最安値から既に何%上がっていたか(小さいほど早く乗れている)。「即買い」は反発を待たずに、形が似た日に買う。" }),
+    ...(bs.combo && bs.combo.length ? [
+      el("h5", { text: "地合いとの組み合わせ" }),
+      table(["買い方", "件数", "60日", "2020年除く", "+15%/底値割れ"],
+        [bs.all, ...bs.hit.filter((r) => r.key === "sig_90"), ...bs.combo].map((r) => {
+          const r15 = rl(r, 0.15, "floor"), ex = r.h60_ex2020 || {};
+          return [COMBO_SHORT[r.key] || SIM_SHORT[r.key] || r.label, (r.events || 0).toLocaleString(),
+            `${f(hd(r, 60).mean)}\n${w(hd(r, 60).win)}`, ex.n ? `${f(ex.mean)}\n${w(ex.win)}` : "-",
+            r15.n ? `${f(r15.mean)}\n${w(r15.win)}` : "-"];
+        })),
+      el("p", { class: "muted", style: "font-size:12px;margin:4px 0 0", text: "下向き/上向き = 買った日に日本株全体(全銘柄の平均)が200日移動平均より下/上。「2020年除く」はコロナ後の急反発を除いた60日の成績。" }),
+    ] : []),
     ...(y && y.by_year.length ? [
       el("h5", { text: "底値圏で類似度90%超え→即買い の年ごと(60日)" }),
       table(["年", "件数", "平均", "勝率"], y.by_year.map((r) => [String(r.year), (r.n || 0).toLocaleString(), f(r.mean), w(r.win)])),
@@ -1153,7 +1341,12 @@ function makeDemo() {
     }
     stocks.push(rec);
   }
-  return { generated_at: new Date().toISOString(), universe_count: stocks.length, params: { near_low: 0.3, min_decline: 0.15, min_rebound: 0.1 },
+  const my = [], mma = []; let mv = 100;
+  for (let i = 0; i < 450; i++) { mv *= Math.exp(gauss() * 0.009 + (i < 300 ? 0.0006 : -0.0012)); my.push(mv); }
+  for (let i = 0; i < 450; i++) mma.push(i < 199 ? null : my.slice(i - 199, i + 1).reduce((a, b) => a + b, 0) / 200);
+  const market = { label: "日本株全体(全銘柄の平均)", up: my[449] > mma[449], gap: +(my[449] / mma[449] - 1).toFixed(4), date: "",
+    chart: { b: "", x: [], y: my.slice(200).map((v) => +v.toFixed(2)), ma: mma.slice(200).map((v) => +v.toFixed(2)) } };
+  return { market, generated_at: new Date().toISOString(), universe_count: stocks.length, params: { near_low: 0.3, min_decline: 0.15, min_rebound: 0.1 },
     genres, sectors, refs: ["三菱電機", "オムロン", "キーエンス", "ABEJA", "円谷フィールズ"], stocks };
 }
 

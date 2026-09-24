@@ -142,19 +142,47 @@ def _similarity_at(close: np.ndarray, low_idx: int, t: int, ref_curves) -> tuple
     return best, len(a)
 
 
-def _market_proxy(closes: dict[str, pd.Series]) -> pd.Series | None:
-    """全銘柄の日々の値動きの中央値をつないだ「相場全体」の指数(等ウェイト)。"""
-    rets = {}
-    for t, s in closes.items():
-        if len(s) > 250:
-            rets[t] = s.pct_change()
+MARKET_LABEL = "日本株全体(全銘柄の平均)"
+MARKET_MA = 200
+
+
+def market_index(closes: dict[str, pd.Series]) -> pd.Series | None:
+    """
+    「相場全体」の指数: 全銘柄の日々の騰落率の平均(等ウェイト)をつないだもの。
+    1日±20%超の値動きはデータ異常の可能性があるので±20%に丸める。100銘柄以上そろっている日だけ使う。
+    (バックテストの地合い判定と、アプリの「今の地合い」表示の両方でこれを使う)
+    """
+    rets = {t: s.pct_change() for t, s in closes.items() if t != MARKET_TICKER and len(s) > 250}
     if not rets:
         return None
-    df = pd.DataFrame(rets)
-    med = df.median(axis=1, skipna=True)
+    df = pd.DataFrame(rets).clip(-0.2, 0.2)
     cnt = df.notna().sum(axis=1)
-    med = med[cnt >= 100].fillna(0)
-    return (1 + med).cumprod()
+    avg = df.mean(axis=1, skipna=True)[cnt >= 100].fillna(0)
+    if avg.empty:
+        return None
+    return 100 * (1 + avg).cumprod()
+
+
+def market_now(idx: pd.Series | None) -> dict | None:
+    """アプリ用: 今日の地合い(指数が200日移動平均より上か下か)と、直近1年の推移。"""
+    if idx is None or len(idx) < MARKET_MA + 5:
+        return None
+    ma = idx.rolling(MARKET_MA).mean()
+    last = idx.iloc[-250:]
+    lm = ma.iloc[-250:]
+    base = last.index[0]
+    return {
+        "label": MARKET_LABEL,
+        "up": bool(idx.iloc[-1] > ma.iloc[-1]),
+        "gap": round(float(idx.iloc[-1] / ma.iloc[-1] - 1), 4),
+        "date": idx.index[-1].strftime("%Y-%m-%d"),
+        "chart": {
+            "b": base.strftime("%Y-%m-%d"),
+            "x": [int((d - base).days) for d in last.index],
+            "y": [round(float(v), 2) for v in last],
+            "ma": [None if pd.isna(v) else round(float(v), 2) for v in lm],
+        },
+    }
 
 
 def _simulate(path: np.ndarray, tp: float, sl, floor_ret: float) -> tuple[float, int]:
@@ -223,6 +251,17 @@ SIM_HITS = [
 ]
 
 
+# 「統計上のベスト条件」の検証用: 買い方 × 買った日の地合い
+COMBOS = [
+    ("all_down", "底打ち候補 × 相場下向き"),
+    ("all_up", "底打ち候補 × 相場上向き"),
+    ("sig_90_down", "底打ち候補×類似度90%超え × 相場下向き"),
+    ("sig_90_up", "底打ち候補×類似度90%超え × 相場上向き"),
+    ("near_90_down", "底値圏×類似度90%超え即買い × 相場下向き"),
+    ("near_90_up", "底値圏×類似度90%超え即買い × 相場上向き"),
+]
+
+
 class _Acc:
     """1つの買い方(バケット)の成績を集める箱。"""
 
@@ -259,6 +298,7 @@ class _Acc:
                 self.rules[(tp, sl)].append(_simulate(path, tp, sl, floor_ret))
 
     def out(self, key, label) -> dict:
+        ex = [r for y, v in self.by_year.items() if y != 2020 for r in v]
         rules = []
         for (tp, sl), trades in self.rules.items():
             if not trades:
@@ -278,18 +318,17 @@ class _Acc:
             "len_med": int(np.median(self.lens)) if self.lens else None,
             "from_low_med": round(float(np.median(self.from_low)), 4) if self.from_low else None,
             "hold": [{"days": h, **_stats(self.hold[h])} for h in HOLD_DAYS],
+            "h60_ex2020": _stats(ex),  # 2020年(コロナ後の急反発)を除いた60日保有
             "rules": rules,
             "by_year": [{"year": y, **_stats(v)} for y, v in sorted(self.by_year.items())],
         }
 
 
 def run(closes: dict[str, pd.Series], refs: list[dict] | None = None) -> dict:
-    mkt = closes.get(MARKET_TICKER)
-    mkt_label = "TOPIX"
-    if mkt is None or len(mkt) < 250:
-        mkt = _market_proxy(closes)  # TOPIX ETFが取れない時は全銘柄の中央値で代用
-        mkt_label = "全銘柄の中央値指数"
+    mkt = market_index(closes)
+    mkt_label = MARKET_LABEL
     up = _market_uptrend(mkt)
+    combo = {k: _Acc() for k, _ in COMBOS}
     ref_curves = _ref_curves(refs)  # 旧方式(比較用)
     ref_tickers = {r["ticker"] for r in refs or []}
     tpl_all = [(r["ticker"], tp) for r in refs or [] for tp in r.get("templates", [])]
@@ -331,6 +370,13 @@ def run(closes: dict[str, pd.Series], refs: list[dict] | None = None) -> dict:
         if evs:
             stocks_with += 1
 
+        # 各日の地合い("up"/"down"/None)
+        if up is not None:
+            upv = up.reindex(dates, method="ffill").to_numpy()
+            regs = np.array([None if (v is None or (isinstance(v, float) and np.isnan(v))) else ("up" if v else "down") for v in upv], dtype=object)
+        else:
+            regs = np.full(n, None, dtype=object)
+
         use_sim = bool(tpl_all) and ticker not in ref_tickers
         if use_sim:
             T = np.stack([tp["z"] for tk, tp in tpl_all if tk != ticker])
@@ -349,6 +395,9 @@ def run(closes: dict[str, pd.Series], refs: list[dict] | None = None) -> dict:
                     mask = (near if cond == "near" else sig) & (sim >= thr)
                     for t, low, _li in _pick(mask, state):
                         sim_acc[key].add(ticker, close, dates, t, low, float(sim[t]))
+                        ck = f"{key}_{regs[t]}"
+                        if ck in combo:
+                            combo[ck].add(ticker, close, dates, t, low, float(sim[t]))
 
         for t, low, low_idx in evs:
             e = t + 1
@@ -361,10 +410,9 @@ def run(closes: dict[str, pd.Series], refs: list[dict] | None = None) -> dict:
                     if lo_ <= sv < hi_:
                         sim_acc[key].add(ticker, close, dates, t, low, sv)
                         break
-            reg = None
-            if up is not None:
-                v = up.asof(dates[t])
-                reg = None if pd.isna(v) else ("up" if bool(v) else "down")
+            reg = regs[t]
+            if reg:
+                combo[f"all_{reg}"].add(ticker, close, dates, t, low)
             for h in HOLD_DAYS:
                 if e + h < n:
                     r = close[e + h] / entry - 1
@@ -420,6 +468,7 @@ def run(closes: dict[str, pd.Series], refs: list[dict] | None = None) -> dict:
             "all": sim_first_all.out("all", "通常シグナル全体(比較用)"),
             "first": [sim_acc[k].out(k, label) for k, label, *_ in SIM_BUCKETS],
             "hit": [sim_acc[k].out(k, label) for k, label, *_ in SIM_HITS],
+            "combo": [combo[k].out(k, label) for k, label in COMBOS],
             "note": "類似度は「その日までの直近60営業日の形」と「勝ちパターン銘柄が大きく上がる前(底〜底の20日後)の形」の相関。"
                     "各日その日までの株価だけで計算(アプリの表示と同じ)。勝ちパターン銘柄自身は除外。"
                     "『買値の底からの上昇』=買った時点で直近3ヶ月の最安値から既に何%上がっていたか(小さいほど早く乗れている)",
@@ -508,6 +557,17 @@ def summary_markdown(bt: dict) -> str:
             lines.append(f"| {r['label']} | {r['events']} | {sm} | {f(r.get('from_low_med'))} | "
                          f"{cell(hd.get(20))} | {cell(hd.get(60))} | {cell(hd.get(120))} | {cell(hd.get(250))} | "
                          f"{cell(rl.get((0.30, 0.20)))} | {cell(rl.get((0.15, 'floor')))} |")
+        if bs.get("combo"):
+            lines += ["", "### 地合いとの組み合わせ(相場下向き/上向き = 買った日に日本株全体の指数が200日線より下/上)",
+                      "| 買い方 | 件数 | 60日 平均/勝率 | 60日(2020年除く) 平均/勝率 | 120日 平均/勝率 | +15/底値割れ 平均/勝率/日数 | +30/-20 平均/勝率/日数 |",
+                      "|---|---|---|---|---|---|---|"]
+            for r in [bs["all"]] + [x for x in bs["hit"] if x["key"] == "sig_90"] + bs["combo"]:
+                hd = {x["days"]: x for x in r["hold"]}
+                rl = {(x["tp"], x["sl"]): x for x in r["rules"]}
+                c2 = lambda x: "-" if not x or not x.get("n") else f"{f(x.get('mean'))} / {w(x.get('win'))}"
+                c3 = lambda x: "-" if not x or not x.get("n") else f"{f(x.get('mean'))} / {w(x.get('win'))} / {x.get('avg_days')}日"
+                lines.append(f"| {r['label']} | {r['events']} | {c2(hd.get(60))} | {c2(r.get('h60_ex2020'))} | {c2(hd.get(120))} | "
+                             f"{c3(rl.get((0.15, 'floor')))} | {c3(rl.get((0.30, 0.20)))} |")
         h90 = next((r for r in bs["hit"] if r["key"] == "near_90"), None)
         if h90 and h90["by_year"]:
             lines += ["", "#### 底値圏で類似度90%超え→即買い の年別(60日保有)", "| 年 | 件数 | 平均 | 勝率 |", "|---|---|---|---|"]

@@ -181,6 +181,15 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], list[dict], 
             print(f"[enrich] {i}/{len(candidates)}")
         time.sleep(0.3)
 
+    # 今の地合い(日本株全体の指数が200日移動平均より上か下か)。バックテストと同じ指数・同じ判定
+    market = None
+    try:
+        market = backtest.market_now(backtest.market_index(closes_full))
+        if market:
+            print(f"[market] {'上向き' if market['up'] else '下向き'}(200日線比 {market['gap'] * 100:+.1f}%)")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[market] 計算失敗: {exc}")
+
     # STEP7 AI(APIキーがある時だけ)
     enrich.ai_evaluate([c[0] for c in candidates])
 
@@ -199,6 +208,7 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], list[dict], 
         },
         "genres": THEME_GENRES,
         "sectors": JPX_33_SECTORS,
+        "market": market,
         "refs": [r["name"] for r in refs],
         "ref_lows": {r["name"]: r["low"].strftime("%Y-%m-%d") for r in refs},
         "stocks": stocks,
