@@ -1,0 +1,65 @@
+# 毎日の自動スクリーニング → スマホ用ページ(GitHub Pages)に反映
+name: screen
+
+on:
+  schedule:
+    - cron: "30 7 * * 1-5"   # 平日 16:30(日本時間)。GitHubの混雑で数十分遅れることあり
+  workflow_dispatch:          # スマホから「Run workflow」で手動実行もできる
+
+permissions:
+  contents: write   # 60日放置で自動停止しないための空コミット用
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Screening(全銘柄)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # 未設定ならAI評価はスキップ(無料のまま)
+        run: python -m screener.run --out site/data
+
+      - name: スマホ画面を同梱
+        run: cp -r web/. site/
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+      - name: Keepalive(60日コミットが無いとGitHubが自動実行を止めるのを防ぐ)
+        if: github.event_name == 'schedule'
+        run: |
+          last=$(git log -1 --format=%ct)
+          now=$(date +%s)
+          if [ $(( (now - last) / 86400 )) -ge 45 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "keepalive"
+            git push
+          fi
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
