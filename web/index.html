@@ -572,7 +572,7 @@ function marketCard(m) {
     const h60 = best?.hold?.find((x) => x.days === 60);
     note.replaceChildren(
       "過去の同じ地合いでのシグナル: 60日後 ", el("b", { text: `${f(cur.h60.mean)}・勝率${Math.round(cur.h60.win * 100)}%` }),
-      h60 && h60.n ? [" / ★ベスト条件なら ", el("b", { text: `${f(h60.mean)}・勝率${Math.round(h60.win * 100)}%` })] : []);
+      ...(h60 && h60.n ? [" / ★ベスト条件なら ", el("b", { text: `${f(h60.mean)}・勝率${Math.round(h60.win * 100)}%` })] : []));
   });
   return card;
 }
