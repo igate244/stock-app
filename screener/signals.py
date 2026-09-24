@@ -20,7 +20,10 @@ BOTTOM_LOOKBACK_DAYS = 63  # 「3ヶ月」の判定窓(営業日)
 MIN_DECLINE_PCT = 0.15  # 底に至るまでに最低これだけ下げていること
 MIN_REBOUND_PCT = 0.10  # 底からこれだけ反発していること
 MIN_DAYS_SINCE_LOW = 3  # 底から最低これだけ経過(直後の跳ね返りだけで判定しない)
-SIMILARITY_WINDOW = 40  # 底から何営業日分の上昇カーブを比較するか
+SIMILARITY_WINDOW = 40  # (旧方式)底から何営業日分の上昇カーブを比較するか
+PRE_WINDOW = 60  # 類似度: 「今日までの直近何営業日」の形を比べるか(下落→底→反発しはじめ)
+PRE_MAX_OFFSET = 20  # 勝ちパターン側は「底の日〜底の20営業日後」までのどの時点を"今日"に当てても良い
+PRE_FUTURE = 60  # 比較グラフで見せる「勝ちパターンのその後」の日数
 
 
 # ---- STEP2: 5年株価位置 ---------------------------------------------------------
@@ -122,3 +125,67 @@ def similarity_score(
         return 0.0
     corr = np.corrcoef(a[:n], b[:n])[0, 1]
     return 0.0 if np.isnan(corr) else max(0.0, float(corr))
+
+
+# ---- STEP5(新方式): 上がる前の形で比べる ----------------------------------------
+# 旧方式は「底からの上昇カーブ」同士を比べていたので、形が似ていると分かる頃には
+# もう上がったあと(買うには遅い)。新方式は「今日までの直近PRE_WINDOW日の形」
+# (下げて→底をつけて→反発しはじめ)を、勝ちパターン銘柄が大きく上がる"前"の同じ区間と比べる。
+# 勝ちパターン側は「底の日」〜「底のPRE_MAX_OFFSET日後」のどこを"今日"に当てるかを全部試して一番似ている所を採用
+# (=底打ち直後でも、少し反発した後でも見つけられる)。
+
+def _zrows(m: np.ndarray) -> np.ndarray:
+    """各行(=1つの期間の対数株価)を平均0・標準偏差1にそろえる。相関を行列の掛け算で一気に出すため。"""
+    mu = m.mean(axis=-1, keepdims=True)
+    sd = m.std(axis=-1, keepdims=True)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        z = (m - mu) / sd
+    return np.nan_to_num(z)
+
+
+def pre_templates(ref_close: pd.Series, ref_low: pd.Timestamp, name: str,
+                  window: int = PRE_WINDOW, max_offset: int = PRE_MAX_OFFSET) -> list[dict]:
+    """勝ちパターン銘柄の「上がる前の形」のお手本(底の日+k日を"今日"とした直近window日)。"""
+    arr = ref_close.to_numpy(dtype=float)
+    li = int(ref_close.index.get_indexer([ref_low])[0])
+    out = []
+    if li < 0:
+        return out
+    for k in range(0, max_offset + 1):
+        end = li + k
+        start = end - window + 1
+        if start < 0 or end >= len(arr):
+            continue
+        seg = np.log(arr[start : end + 1])
+        out.append({"name": name, "k": k, "end": end, "z": _zrows(seg[None, :])[0], "close": ref_close})
+    return out
+
+
+def pre_similarity(close: pd.Series, templates: list[dict], window: int = PRE_WINDOW) -> tuple[float, dict | None]:
+    """今日までの直近window日の形と、お手本の形の相関(-1〜1、高いほど似ている)の最大値と、そのお手本。"""
+    if len(close) < window or not templates:
+        return 0.0, None
+    z = _zrows(np.log(close.to_numpy(dtype=float)[-window:])[None, :])[0]
+    T = np.stack([t["z"] for t in templates])
+    c = T @ z / window
+    i = int(np.argmax(c))
+    return float(c[i]), templates[i]
+
+
+def pre_similarity_all(close: np.ndarray, T: np.ndarray, window: int = PRE_WINDOW) -> tuple[np.ndarray, np.ndarray]:
+    """
+    バックテスト用: 全営業日について「その日までの直近window日」の類似度を一括計算。
+    T = お手本のz配列を縦に積んだもの。戻り値 (類似度[n], 一番似たお手本の番号[n])。最初のwindow-1日はNaN。
+    """
+    from numpy.lib.stride_tricks import sliding_window_view
+
+    n = len(close)
+    sim = np.full(n, np.nan)
+    arg = np.full(n, -1)
+    if n < window or not len(T):
+        return sim, arg
+    Z = _zrows(sliding_window_view(np.log(close), window))
+    C = Z @ T.T / window
+    sim[window - 1 :] = C.max(axis=1)
+    arg[window - 1 :] = C.argmax(axis=1)
+    return sim, arg

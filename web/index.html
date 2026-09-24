@@ -245,7 +245,8 @@ details.help ul { margin: 6px 0 0; padding-left: 1.2em; }
 .tbl-wrap { overflow-x: auto; margin-top: 6px; }
 .tbl { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
 .tbl th { text-align: right; font-weight: 600; color: var(--ink2); padding: 6px 6px; border-bottom: 1px solid var(--axis); white-space: nowrap; }
-.tbl td { text-align: right; padding: 6px 6px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+.tbl td { text-align: right; padding: 6px 6px; border-bottom: 1px solid var(--grid); white-space: pre; line-height: 1.35; }
+.tbl td:first-child { white-space: normal; min-width: 6.5em; }
 .tbl th:first-child, .tbl td:first-child { text-align: left; }
 .tbl tr.best td { font-weight: 700; }
 details.bt summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; min-height: 32px; }
@@ -581,7 +582,9 @@ function syncSort() {
   if (!sel) return;
   const opts = state.tab === "pass"
     ? [["best", "おすすめ順"], ["sim", "類似度が高い順"], ["reb", "反発が大きい順"], ["pos", "株価位置が低い順"]]
-    : [["pos", "株価位置が低い順"], ["reb", "反発が大きい順"], ["name", "コード順"]];
+    : state.tab === "nobottom"
+      ? [["sim", "類似度が高い順"], ["pos", "株価位置が低い順"], ["reb", "反発が大きい順"], ["name", "コード順"]]
+      : [["pos", "株価位置が低い順"], ["reb", "反発が大きい順"], ["name", "コード順"]];
   if (!opts.some(([v]) => v === state.sort)) state.sort = opts[0][0];
   sel.replaceChildren(...opts.map(([v, l]) => el("option", { value: v, text: l })));
   sel.value = state.sort;
@@ -608,7 +611,7 @@ function renderList(pool = selected()) {
 
   const notes = {
     pass: "底値圏にいて、直近で底打ちした銘柄。タップでグラフ・業績・ニュース。",
-    nobottom: "底値圏にはいるけど、まだ底打ちの形になってない銘柄。",
+    nobottom: "底値圏にはいるけど、まだ底打ちの形になってない銘柄。類似度が高いものは「反発前の早い段階」の可能性。",
     high: "5年の値幅の中で、まだ底値圏まで下がってない銘柄。",
     nodata: "株価が取れなかった銘柄(上場直後・売買停止など)。",
   };
@@ -644,6 +647,7 @@ function row(s) {
     facts.push(`3ヶ月 ${s.dec != null ? "-" + Math.round(s.dec * 100) + "%" : "-"}→底から${pct(s.reb, true)}`);
     if (s.earn) facts.push(`業績 ${s.earn.trend}`);
     if (s.sim_ref && s.st === "pass") facts.push(`${s.sim_ref}似`);
+    if (s.sim_ref && s.st === "nobottom" && (s.sim ?? 0) >= 0.85) facts.push(`${s.sim_ref}の上昇前に似てる ${s.sim.toFixed(2)}`);
   }
   return el("button", { class: "item", onclick: () => openDetail(s) },
     el("span", { class: "name", text: s.n }),
@@ -659,13 +663,22 @@ function whyText(s) {
   if (s.st === "nodata") return "株価データが取得できなかった(上場直後・売買停止・コード変更など)。";
   if (s.st === "high") return `5年の値幅のうち下から${pct(s.pos)}の位置。底値圏(下から${near}%以内)より上なので脱落。`;
   if (s.st === "nobottom") {
-    const minD = p.min_decline ?? 0.15, minR = p.min_rebound ?? 0.1;
-    if ((s.dsl ?? 0) === 0) return `底値圏(${pct(s.pos)})だけど、今日が直近3ヶ月の最安値。まだ下げている途中で、底打ちの形になってない。`;
-    if ((s.dec ?? 0) < minD) return `底値圏(${pct(s.pos)})にはいるけど、直近3ヶ月の下げが${pct(s.dec)}と小さく、「底」と呼べる形になってない(${Math.round(minD * 100)}%以上の下げが条件)。`;
-    if ((s.reb ?? 0) < minR) return `底値圏(${pct(s.pos)})で直近${pct(s.dec)}下げたけど、底からの反発が${pct(s.reb, true)}でまだ弱い(+${Math.round(minR * 100)}%以上が条件)。`;
-    return `底をつけてから${s.dsl}営業日しか経ってなくて、まだ判断できない。`;
+    const early = s.sim_ref && (s.sim ?? 0) >= 0.85 ? ` ただ、直近60日の形は${s.sim_ref}が大きく上がる前の形に似ている(類似度${s.sim.toFixed(2)})。` : "";
+    return nobottomWhy(s, p) + early;
   }
-  return `底値圏(5年位置${pct(s.pos)})で、直近3ヶ月に${pct(s.dec)}下げたあと底から${pct(s.reb, true)}反発。${s.sim_ref ? `上昇の形は${s.sim_ref}に一番近い(類似度${(s.sim ?? 0).toFixed(2)})。` : ""}`;
+  return passWhy(s);
+}
+
+function nobottomWhy(s, p) {
+  const minD = p.min_decline ?? 0.15, minR = p.min_rebound ?? 0.1;
+  if ((s.dsl ?? 0) === 0) return `底値圏(${pct(s.pos)})だけど、今日が直近3ヶ月の最安値。まだ下げている途中で、底打ちの形になってない。`;
+  if ((s.dec ?? 0) < minD) return `底値圏(${pct(s.pos)})にはいるけど、直近3ヶ月の下げが${pct(s.dec)}と小さく、「底」と呼べる形になってない(${Math.round(minD * 100)}%以上の下げが条件)。`;
+  if ((s.reb ?? 0) < minR) return `底値圏(${pct(s.pos)})で直近${pct(s.dec)}下げたけど、底からの反発が${pct(s.reb, true)}でまだ弱い(+${Math.round(minR * 100)}%以上が条件)。`;
+  return `底をつけてから${s.dsl}営業日しか経ってなくて、まだ判断できない。`;
+}
+
+function passWhy(s) {
+  return `底値圏(5年位置${pct(s.pos)})で、直近3ヶ月に${pct(s.dec)}下げたあと底から${pct(s.reb, true)}反発。${s.sim_ref ? `直近60日の形は${s.sim_ref}が大きく上がる前の形に一番近い(類似度${(s.sim ?? 0).toFixed(2)})。` : ""}`;
 }
 
 function openDetail(s) {
@@ -689,7 +702,7 @@ function openDetail(s) {
       stat("5年位置", pct(s.pos), s.yrs != null && s.yrs < 3 ? `データ${s.yrs}年分のみ` : "0%=5年最安値"),
       stat("3ヶ月の下落", s.dec != null ? `-${Math.round(s.dec * 100)}%` : "-", "底までの下げ幅"),
       stat("底からの反発", pct(s.reb, true), `底から${s.dsl ?? "-"}営業日`),
-      s.st === "pass" ? stat("勝ちパターン類似度", (s.sim ?? 0).toFixed(2), s.sim_ref ? `一番近い: ${s.sim_ref}` : "比較対象なし") : null);
+      s.sim != null ? stat("勝ちパターン類似度", s.sim.toFixed(2), s.sim_ref ? `${s.sim_ref}の上昇前に近い` : "比較対象なし") : null);
     panel.append(el("div", { class: "section" }, el("h4", { text: "数字" }), stats));
   }
 
@@ -766,7 +779,7 @@ function buildPrompt(s) {
 最新終値: ${yen(s.px)}円
 5年株価位置: ${pct(s.pos)}(0%=5年最安値)
 直近3ヶ月: ${s.dec != null ? Math.round(s.dec * 100) : "-"}%下落 → 底から${pct(s.reb, true)}反発(底から${s.dsl}営業日)
-${s.st === "pass" ? `勝ちパターン類似度: ${(s.sim ?? 0).toFixed(2)}(一番近い: ${s.sim_ref || "-"})\n` : ""}業績: ${earnTxt}
+${s.sim != null ? `勝ちパターン類似度(直近60日の形と、勝ちパターン銘柄が大きく上がる前の形の相関): ${s.sim.toFixed(2)}(一番近い: ${s.sim_ref || "-"})\n` : ""}業績: ${earnTxt}
 直近ニュース:
 ${news}`;
 }
@@ -817,9 +830,10 @@ async function loadBacktest(box) {
     ...(bt.by_regime && bt.by_regime.length ? [
       el("h5", { text: "相場全体の地合い別" }),
       table(["地合い", "60日平均", "60日勝率", "120日平均", "120日勝率"],
-        bt.by_regime.map((r) => [r.regime === "up" ? "TOPIX上向き" : "TOPIX下向き", f(r.h60.mean), w(r.h60.win), f(r.h120.mean), w(r.h120.win)])),
-      el("p", { class: "muted", style: "font-size:12px;margin:4px 0 0", text: "上向き/下向き = シグナル日にTOPIXが200日移動平均より上/下だったか。" }),
+        bt.by_regime.map((r) => [r.regime === "up" ? "上向き" : "下向き", f(r.h60.mean), w(r.h60.win), f(r.h120.mean), w(r.h120.win)])),
+      el("p", { class: "muted", style: "font-size:12px;margin:4px 0 0", text: `上向き/下向き = ${bt.by_regime[0].label.includes("TOPIX") ? "TOPIX" : "全銘柄の中央値指数"}がシグナル日に200日移動平均より上/下だったか。` }),
     ] : []),
+    ...simSection(bt.by_similarity, table, f, w),
     el("h5", { text: "利確・損切りの組み合わせ(平均リターン上位10)" }),
     table(["利確", "損切り", "平均", "勝率", "平均日数"],
       bt.grid.slice(0, 10).map((r) => [`+${Math.round(r.tp * 100)}%`, r.sl === "floor" ? "底値割れ" : `-${Math.round(r.sl * 100)}%`, f(r.mean), w(r.win), `${Math.round(r.avg_days)}日`]), 0),
@@ -830,6 +844,32 @@ async function loadBacktest(box) {
     table(["年", "件数", "平均", "勝率"], bt.by_year.map((r) => [String(r.year), (r.n || 0).toLocaleString(), f(r.mean), w(r.win)])),
     el("ul", { class: "cav" }, ...(bt.caveats || []).map((c) => el("li", { text: c }))),
   );
+}
+
+const SIM_SHORT = {
+  all: "通常シグナル全部", first_90: "通常×類似90%↑", first_80: "通常×類似80-90%", first_70: "通常×類似70-80%", first_lo: "通常×類似70%未満",
+  near_90: "底値圏×類似90%↑ 即買い", near_95: "底値圏×類似95%↑ 即買い", sig_90: "底打ち×類似90%↑", post_90: "旧方式(上昇後の形)90%↑",
+};
+
+function simSection(bs, table, f, w) {
+  if (!bs) return [];
+  const rows = [bs.all, ...bs.first, ...bs.hit];
+  const hd = (r, d) => r.hold.find((x) => x.days === d) || {};
+  const rl = (r, tp, sl) => r.rules.find((x) => x.tp === tp && x.sl === sl) || {};
+  const best = rows.reduce((bi, r, i) => ((hd(r, 60).mean ?? -9) > (hd(rows[bi], 60).mean ?? -9) && r.events >= 100 ? i : bi), 0);
+  const y = bs.hit.find((r) => r.key === "near_90");
+  return [
+    el("h5", { text: "勝ちパターン類似度で買ったら" }),
+    el("p", { class: "sub", style: "margin:2px 0 6px", text: `類似度 = 直近${bs.window || 60}日の形が、勝ちパターン銘柄が大きく上がる"前"(底〜底の20日後)の形にどれだけ似ているか。各日その日までの株価だけで計算。` }),
+    table(["買い方", "件数", "底から", "60日", "120日", "250日"],
+      rows.map((r) => [SIM_SHORT[r.key] || r.label, (r.events || 0).toLocaleString(), f(r.from_low_med),
+        `${f(hd(r, 60).mean)}\n${w(hd(r, 60).win)}`, `${f(hd(r, 120).mean)}\n${w(hd(r, 120).win)}`, `${f(hd(r, 250).mean)}\n${w(hd(r, 250).win)}`]), best),
+    el("p", { class: "muted", style: "font-size:12px;margin:4px 0 0", text: "上段=平均、下段=勝率。「底から」= 買った時点で直近3ヶ月の最安値から既に何%上がっていたか(小さいほど早く乗れている)。「即買い」は反発を待たずに、形が似た日に買う。" }),
+    ...(y && y.by_year.length ? [
+      el("h5", { text: "底値圏で類似度90%超え→即買い の年ごと(60日)" }),
+      table(["年", "件数", "平均", "勝率"], y.by_year.map((r) => [String(r.year), (r.n || 0).toLocaleString(), f(r.mean), w(r.win)])),
+    ] : []),
+  ];
 }
 
 /* ---------- グラフ(線グラフのみ) ---------- */
@@ -860,6 +900,22 @@ function chartSection(s) {
 
 function renderChart(card, s, mode) {
   const p = state.data.params || {};
+  if (mode === "cmp" && s.cmp.b_at) {
+    // 新方式: 今日=100。勝ちパターンは"同じ形だった日"を今日に重ね、その後の動き(点線)まで表示
+    const a = s.cmp.a, b = s.cmp.b;
+    const n = a.length;
+    const series = [
+      { name: s.n, xs: a.map((_, i) => i - n + 1), ys: a, color: "var(--s1)" },
+      { name: s.sim_ref || "勝ちパターン", xs: b.map((_, i) => i - n + 1), ys: b, color: "var(--s2)", dashFrom: n - 1 },
+    ];
+    card.append(el("div", { class: "chart-title" },
+      el("span", { text: "今日=100。点線は勝ちパターンのその後" }),
+      el("span", { class: "legend" }, ...series.map((sr) => el("span", {}, el("i", { style: `background:${sr.color}` }), sr.name)))));
+    const after = b.length > n ? b[b.length - 1] - 100 : null;
+    lineChart(card, { series, xKind: "rel", baseline: 100, vline: { x: 0, label: "今日" }, yFmt: (v) => v.toFixed(0), valFmt: (v) => v.toFixed(1),
+      note: `${s.sim_ref}の${s.cmp.b_at.replace(/-/g, "/")}(底の${s.cmp.k}営業日後)と形が似ている${after != null ? `。そこから${b.length - n}営業日で${after > 0 ? "+" : ""}${after.toFixed(0)}%` : ""}` });
+    return;
+  }
   if (mode === "cmp") {
     const a = s.cmp.a, b = s.cmp.b;
     const series = [
@@ -937,6 +993,8 @@ function lineChart(host, o) {
       const c = new Date(d0.getFullYear(), d0.getMonth() + 1, 1);
       while (c.getTime() <= x1) { xt.push([c.getTime(), `${c.getMonth() + 1}月`]); c.setMonth(c.getMonth() + 1); }
     }
+  } else if (o.xKind === "rel") {
+    for (let d = Math.ceil(x0 / 20) * 20; d <= x1; d += 20) xt.push([d, d === 0 ? "今日" : d < 0 ? `${-d}日前` : `${d}日後`]);
   } else {
     for (let d = 0; d <= x1; d += 10) xt.push([d, d === 0 ? "底" : `${d}日後`]);
   }
@@ -958,9 +1016,16 @@ function lineChart(host, o) {
   }
 
   // lines
+  if (o.vline) {
+    g.append(sv("line", { x1: X(o.vline.x), x2: X(o.vline.x), y1: m.t, y2: m.t + ih, stroke: "var(--axis)", "stroke-width": 1, "stroke-dasharray": "3 3" }));
+  }
   for (const sr of o.series) {
-    const d = sr.xs.map((x, i) => `${i ? "L" : "M"}${X(x).toFixed(1)},${Y(sr.ys[i]).toFixed(1)}`).join("");
-    g.append(sv("path", { d, fill: "none", stroke: sr.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    const pth = (from, to) => sr.xs.slice(from, to).map((x, j) => `${j ? "L" : "M"}${X(x).toFixed(1)},${Y(sr.ys[from + j]).toFixed(1)}`).join("");
+    const cut = sr.dashFrom != null && sr.dashFrom < sr.xs.length - 1 ? sr.dashFrom : sr.xs.length - 1;
+    g.append(sv("path", { d: pth(0, cut + 1), fill: "none", stroke: sr.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    if (cut < sr.xs.length - 1) {
+      g.append(sv("path", { d: pth(cut, sr.xs.length), fill: "none", stroke: sr.color, "stroke-width": 2, "stroke-dasharray": "4 4", "stroke-linecap": "round", opacity: 0.8 }));
+    }
     const li = sr.xs.length - 1;
     g.append(sv("circle", { cx: X(sr.xs[li]), cy: Y(sr.ys[li]), r: 4, fill: sr.color, stroke: "var(--surface)", "stroke-width": 2 }));
   }
@@ -996,7 +1061,9 @@ function lineChart(host, o) {
       } else dots[k].setAttribute("visibility", "hidden");
     });
     const xv = ref.xs[i];
-    const head = xv instanceof Date ? `${xv.getFullYear()}/${xv.getMonth() + 1}/${xv.getDate()}` : xv === 0 ? "底の日" : `底から${xv}日後`;
+    const head = xv instanceof Date ? `${xv.getFullYear()}/${xv.getMonth() + 1}/${xv.getDate()}`
+      : o.xKind === "rel" ? (xv === 0 ? "今日" : xv < 0 ? `${-xv}営業日前` : `${xv}営業日後(勝ちパターンのその後)`)
+      : xv === 0 ? "底の日" : `底から${xv}日後`;
     tip.replaceChildren(el("div", { text: head }),
       ...o.series.filter((sr) => i < sr.ys.length).map((sr) => el("div", { class: "r" }, el("i", { style: `background:${sr.color}` }), el("b", { text: o.valFmt(sr.ys[i]) }), o.series.length > 1 ? sr.name : null)));
     tip.hidden = false;
@@ -1064,6 +1131,9 @@ function makeDemo() {
     const pre = Math.max(...win.slice(0, li + 1));
     const rec = { t, n: name, s, th, px: +px.toPrecision(5), pos: +((px - lo) / (hi - lo)).toFixed(3), yrs: 4.9,
       dec: +((pre - win[li]) / pre).toFixed(3), reb: +((px - win[li]) / win[li]).toFixed(3), dsl: 62 - li, st: kind };
+    if (kind === "nobottom") {
+      rec.sim = +(0.5 + rnd() * 0.45).toFixed(3); rec.sim_ref = ["三菱電機", "オムロン", "キーエンス"][k % 3];
+    }
     if (kind === "pass") {
       rec.pos = Math.min(rec.pos, 0.28);
       const enc = (idx) => { const b = dates[idx[0]]; return { b: b.toISOString().slice(0, 10), x: idx.map((i) => Math.round((dates[i] - b) / 864e5)), y: idx.map((i) => +ys[i].toPrecision(4)) }; };
@@ -1071,11 +1141,12 @@ function makeDemo() {
       const daily = []; for (let i = days - 63; i < days; i++) daily.push(i);
       rec.ch = { w: enc(weekly), d: enc(daily) };
       rec.low_d = dates[days - 63 + li].toISOString().slice(0, 10);
-      const a = win.slice(li, li + 40).map((y) => +(y / win[li] * 100).toFixed(1));
-      const b = a.map((y, i) => +(100 + (y - 100) * (0.8 + 0.3 * rnd()) + i * 0.15).toFixed(1));
+      const a = ys.slice(-60).map((y) => +(y / px * 100).toFixed(1));
+      const b = a.map((y) => +(100 + (y - 100) * (0.8 + 0.3 * rnd())).toFixed(1))
+        .concat(Array.from({ length: 60 }, (_, i) => +(100 + (i + 1) * (0.3 + 0.4 * rnd())).toFixed(1)));
       const refs = ["三菱電機", "オムロン", "キーエンス", "ABEJA", "円谷フィールズ"];
-      rec.sim = +(0.55 + rnd() * 0.4).toFixed(3); rec.sim_ref = refs[k % refs.length];
-      rec.cmp = { a, b: b.concat(Array.from({ length: Math.max(0, 40 - b.length) }, (_, i) => +(b[b.length - 1] + i * 0.4).toFixed(1))), b_from: "2023-10-27" };
+      rec.sim = +(0.75 + rnd() * 0.23).toFixed(3); rec.sim_ref = refs[k % refs.length];
+      rec.cmp = { a, b, b_at: "2023-11-08", k: 8 };
       rec.earn = k % 3 === 2 ? { has_data: false, trend: "データ不足" } : { has_data: true, trend: k % 2 ? "改善" : "横ばい", metric: "営業利益", rev_yoy: 0.08, profit_yoy: k % 2 ? 0.21 : -0.02, profit_qoq: 0.05 };
       rec.news = [{ d: "09/20", t: "(デモ)架空のニュース見出しがここに並びます", u: "" }];
       if (k < 3) rec.ai = { score: +(0.8 - k * 0.07).toFixed(2), comment: "(デモ)AI評価のコメントがここに出ます。良い点と懸念点を2〜3文で。" };

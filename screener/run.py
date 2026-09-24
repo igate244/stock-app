@@ -46,7 +46,21 @@ def _series_payload(close: pd.Series) -> dict:
     }
 
 
-def load_references(closes: dict[str, pd.Series]) -> list[dict]:
+EARLY_TOP = 40  # 反発前の銘柄のうちグラフを付ける数
+EARLY_MIN_SIM = 0.85
+
+
+def _charts(close: pd.Series) -> dict:
+    # 5年=週足(各週の最後の取引日の終値)、3ヶ月=日足
+    weekly = close.groupby(close.index.to_period("W-FRI")).tail(1)
+    return {"w": _series_payload(weekly), "d": _series_payload(close.tail(signals.BOTTOM_LOOKBACK_DAYS))}
+
+
+def load_references(closes: dict[str, pd.Series], closes_full: dict[str, pd.Series] | None = None) -> list[dict]:
+    """
+    勝ちパターン銘柄。底の日は直近5年(closes)で決め、「上がる前の形」は底より前のデータも要るので
+    取れていれば10年分(closes_full)から切り出す。
+    """
     cfg = yaml.safe_load(CONFIG.read_text(encoding="utf-8")) or {}
     refs = []
     for wp in cfg.get("winning_stocks", []):
@@ -54,13 +68,37 @@ def load_references(closes: dict[str, pd.Series]) -> list[dict]:
         if not t or t not in closes:
             continue
         low = signals.reference_low_date(closes[t], wp.get("pattern_start") or None)
-        if low is not None:
-            refs.append({"name": wp.get("name") or t, "ticker": t, "close": closes[t], "low": low})
-    print(f"[refs] 勝ちパターン比較対象: {[r['name'] for r in refs]}")
+        if low is None:
+            continue
+        name = wp.get("name") or t
+        full = (closes_full or {}).get(t, closes[t])
+        refs.append({"name": name, "ticker": t, "close": closes[t], "full": full, "low": low,
+                     "templates": signals.pre_templates(full, low, name)})
+    print(f"[refs] 勝ちパターン比較対象: {[(r['name'], r['low'].strftime('%Y-%m-%d'), len(r['templates'])) for r in refs]}")
     return refs
 
 
-def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict]:
+def _templates_for(refs: list[dict], ticker: str) -> list[dict]:
+    return [tp for r in refs if r["ticker"] != ticker for tp in r["templates"]]
+
+
+def _cmp_payload(close: pd.Series, tpl: dict) -> dict:
+    """比較グラフ用: 今日=100 にそろえた、この銘柄の直近60日 と 勝ちパターンの同じ形の区間+その後。"""
+    W = signals.PRE_WINDOW
+    a = close.iloc[-W:]
+    ref = tpl["close"]
+    end = tpl["end"]
+    b = ref.iloc[end - W + 1 : end + 1 + signals.PRE_FUTURE]
+    a0, b0 = float(a.iloc[-1]), float(ref.iloc[end])
+    return {
+        "a": [round(float(v) / a0 * 100, 1) for v in a],
+        "b": [round(float(v) / b0 * 100, 1) for v in b],
+        "b_at": ref.index[end].strftime("%Y-%m-%d"),
+        "k": tpl["k"],
+    }
+
+
+def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], list[dict], dict]:
     started = time.time()
     universe = data.load_universe()
     if limit:
@@ -76,9 +114,10 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict]:
     for t, ser in closes_full.items():
         cut = ser.index[-1] - pd.DateOffset(years=5)
         closes[t] = ser[ser.index >= cut]
-    refs = load_references(closes)
+    refs = load_references(closes, closes_full)
 
     stocks: list[dict] = []
+    early: list[tuple] = []
     candidates: list[tuple[dict, pd.Series, signals.BottomSignal]] = []
 
     for row in universe.itertuples(index=False):
@@ -101,43 +140,41 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict]:
         }
         if not pos.near_low:
             rec["st"] = "high"
-        elif not bottom.bottomed:
-            rec["st"] = "nobottom"
         else:
-            rec["st"] = "pass"
-            candidates.append((rec, close, bottom))
+            # STEP5 類似度(上がる前の形で比較)。底値圏の銘柄は全部計算する(まだ反発前の早い段階の銘柄も見つけるため)
+            sim, tpl = signals.pre_similarity(close, _templates_for(refs, row.ticker))
+            if tpl is not None:
+                rec["sim"] = _r(sim)
+                rec["sim_ref"] = tpl["name"]
+            if not bottom.bottomed:
+                rec["st"] = "nobottom"
+                if tpl is not None:
+                    early.append((sim, rec, close, tpl))
+            else:
+                rec["st"] = "pass"
+                candidates.append((rec, close, bottom))
+                if tpl is not None:
+                    rec["cmp"] = _cmp_payload(close, tpl)
         stocks.append(rec)
+
+    # まだ反発前でも形がよく似ている銘柄(上位のみ)は、グラフを見られるようにしておく
+    early.sort(key=lambda x: x[0], reverse=True)
+    for sim, rec, close, tpl in early[:EARLY_TOP]:
+        if sim < EARLY_MIN_SIM:
+            break
+        rec["cmp"] = _cmp_payload(close, tpl)
+        rec["ch"] = _charts(close)
 
     print(f"[screen] 底打ち候補: {len(candidates)} 銘柄 → 類似度・業績・ニュースを収集")
 
     for i, (rec, close, bottom) in enumerate(candidates, 1):
-        # STEP5 類似度(最も似ている勝ちパターン銘柄を記録)
-        best, best_ref = 0.0, None
-        for ref in refs:
-            if ref["ticker"] == rec["t"]:
-                continue
-            sc = signals.similarity_score(close, bottom.low_date, ref["close"], ref["low"])
-            if sc > best:
-                best, best_ref = sc, ref
-        rec["sim"] = _r(best)
-        rec["sim_ref"] = best_ref["name"] if best_ref else None
-        if best_ref is not None:
-            a = close.loc[bottom.low_date:].iloc[: signals.SIMILARITY_WINDOW]
-            b = best_ref["close"].loc[best_ref["low"]:].iloc[: signals.SIMILARITY_WINDOW]
-            rec["cmp"] = {
-                "a": [round(float(v / a.iloc[0] * 100), 1) for v in a],
-                "b": [round(float(v / b.iloc[0] * 100), 1) for v in b],
-                "b_from": best_ref["low"].strftime("%Y-%m-%d"),
-            }
-
         # STEP4 業績 / STEP6 ニュース
         rec["earn"] = enrich.earnings(rec["t"])
         rec["news"] = enrich.news(rec["n"])
 
         # グラフ用データ(5年=週足、3ヶ月=日足)
         # 週足: 各週の最後の取引日の終値(日付は実際の取引日のまま)
-        weekly = close.groupby(close.index.to_period("W-FRI")).tail(1)
-        rec["ch"] = {"w": _series_payload(weekly), "d": _series_payload(close.tail(signals.BOTTOM_LOOKBACK_DAYS))}
+        rec["ch"] = _charts(close)
         rec["low_d"] = bottom.low_date.strftime("%Y-%m-%d")
 
         if i % 10 == 0:
@@ -147,7 +184,7 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict]:
     # STEP7 AI(APIキーがある時だけ)
     enrich.ai_evaluate([c[0] for c in candidates])
 
-    return closes_full, {
+    return closes_full, refs, {
         "generated_at": datetime.now(JST).isoformat(timespec="minutes"),
         "elapsed_min": round((time.time() - started) / 60, 1),
         "universe_count": len(universe),
@@ -156,10 +193,14 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict]:
             "min_decline": signals.MIN_DECLINE_PCT,
             "min_rebound": signals.MIN_REBOUND_PCT,
             "lookback_days": signals.BOTTOM_LOOKBACK_DAYS,
+            "sim_window": signals.PRE_WINDOW,
+            "sim_future": signals.PRE_FUTURE,
+            "sim_method": "pre",
         },
         "genres": THEME_GENRES,
         "sectors": JPX_33_SECTORS,
         "refs": [r["name"] for r in refs],
+        "ref_lows": {r["name"]: r["low"].strftime("%Y-%m-%d") for r in refs},
         "stocks": stocks,
     }
 
@@ -170,7 +211,7 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args()
 
-    closes, result = screen(args.limit)
+    closes, refs, result = screen(args.limit)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "results.json").write_text(json.dumps(result, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
@@ -180,7 +221,7 @@ def main() -> None:
     # バックテスト(失敗しても毎日のスクリーニング結果の公開は止めない)
     try:
         t0 = time.time()
-        bt = backtest.run(closes)
+        bt = backtest.run(closes, refs)
         (out / "backtest.json").write_text(json.dumps(bt, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
         md = backtest.summary_markdown(bt)
         print(md)
