@@ -242,10 +242,23 @@ details.help ul { margin: 6px 0 0; padding-left: 1.2em; }
 .link-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .link-row .btn { flex: 1 1 140px; }
 .ai-score { font-size: 28px; font-weight: 700; }
+.tbl-wrap { overflow-x: auto; margin-top: 6px; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.tbl th { text-align: right; font-weight: 600; color: var(--ink2); padding: 6px 6px; border-bottom: 1px solid var(--axis); white-space: nowrap; }
+.tbl td { text-align: right; padding: 6px 6px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+.tbl th:first-child, .tbl td:first-child { text-align: left; }
+.tbl tr.best td { font-weight: 700; }
+details.bt summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; min-height: 32px; }
+details.bt summary::-webkit-details-marker { display: none; }
+details.bt summary::after { content: "＋"; color: var(--muted); }
+details.bt[open] summary::after { content: "－"; }
+.bt h5 { margin: 14px 0 2px; font-size: 13px; color: var(--ink2); }
+.bt ul.cav { margin: 6px 0 0; padding-left: 1.2em; font-size: 12px; color: var(--muted); }
 
 .toast {
   position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
-  background: var(--ink); color: var(--page); padding: 10px 16px; border-radius: 999px; font-size: 14px; z-index: 40;
+  background: var(--ink); color: var(--page); padding: 10px 16px; border-radius: 14px; font-size: 14px; z-index: 40;
+  width: max-content; max-width: calc(100% - 32px); text-align: center;
   opacity: 0; pointer-events: none; transition: opacity 0.2s;
 }
 .toast.show { opacity: 1; }
@@ -445,6 +458,12 @@ function renderShell() {
     el("p", { class: "tab-note", id: "tab-note" }),
     el("ul", { class: "list", id: "list" }),
     el("div", { id: "more-slot" })));
+
+  /* 過去の成績(バックテスト) */
+  const btBox = el("div", { id: "bt-body", class: "sub", text: "読み込み中…" });
+  const btDet = el("details", { class: "bt" }, el("summary", {}, el("h2", { text: "過去の成績(バックテスト)" })), btBox);
+  btDet.addEventListener("toggle", () => { if (btDet.open && !btDet.dataset.loaded) { btDet.dataset.loaded = "1"; loadBacktest(btBox); } });
+  main.append(el("section", { class: "card" }, btDet));
 
   /* フッター */
   const p = d.params || {};
@@ -707,7 +726,9 @@ function openDetail(s) {
   const c = code(s.t);
   panel.append(el("div", { class: "section" }, el("h4", { text: "もっと調べる" }),
     el("div", { class: "link-row" },
-      s.st !== "nodata" ? el("button", { class: "btn primary", onclick: () => askClaude(s) }, "Claudeに聞く") : null,
+      s.st !== "nodata" ? el("button", { class: "btn primary", onclick: () => askAI(s, "claude") }, "Claudeに聞く") : null,
+      s.st !== "nodata" ? el("button", { class: "btn primary", onclick: () => askAI(s, "gemini") }, "Geminiに聞く") : null,
+      s.st !== "nodata" && navigator.share ? el("button", { class: "btn", onclick: () => askAI(s, "share") }, "他のAIアプリで聞く") : null,
       el("a", { class: "btn", href: `https://kabutan.jp/stock/?code=${encodeURIComponent(c)}`, target: "_blank", rel: "noopener" }, "株探"),
       el("a", { class: "btn", href: `https://finance.yahoo.co.jp/quote/${encodeURIComponent(s.t)}`, target: "_blank", rel: "noopener" }, "Yahoo!ファイナンス"))));
 
@@ -733,13 +754,12 @@ function stat(label, value, hint) {
   return el("div", { class: "stat" }, el("div", { class: "l", text: label }), el("div", { class: "v", text: value }), hint ? el("div", { class: "h", text: hint }) : null);
 }
 
-function askClaude(s) {
+function buildPrompt(s) {
   const e = s.earn || {};
   const earnTxt = !e.has_data ? "データなし" : `トレンド${e.trend}、売上前年比${pct(e.rev_yoy, true)}、${e.metric}前年比${pct(e.profit_yoy, true)}、前四半期比${pct(e.profit_qoq, true)}`;
   const news = (s.news || []).map((n) => `・[${n.d}] ${n.t}`).join("\n") || "なし";
   const refs = (state.data.refs || []).join("・") || "三菱電機・オムロン・キーエンス・ABEJA・円谷フィールズ";
-  const prompt =
-`日本株のスクリーニングで引っかかった銘柄について、参考意見がほしい。
+  return `日本株のスクリーニングで引っかかった銘柄について、参考意見がほしい。
 自分の「勝ちパターン」は、${refs}のような「長く下げて底打ちしたあと上がっていく」形。この銘柄がそれに当てはまりそうか、良い点と懸念点を簡潔に評価して。最新の決算やニュースも調べて補足して。最終判断は自分でするので参考意見でOK。
 
 銘柄: ${s.n}(${code(s.t)}) / ${s.s}
@@ -749,9 +769,61 @@ function askClaude(s) {
 ${s.st === "pass" ? `勝ちパターン類似度: ${(s.sim ?? 0).toFixed(2)}(一番近い: ${s.sim_ref || "-"})\n` : ""}業績: ${earnTxt}
 直近ニュース:
 ${news}`;
+}
+
+// Claude: URLで質問文ごと渡せる / Gemini: URLで渡す公式の方法がないので、コピーして開く(貼り付けて送信)
+// 他のAIアプリ: スマホの共有メニューでGemini・ChatGPTなどのアプリに直接テキストを渡す
+async function askAI(s, target) {
+  const prompt = buildPrompt(s);
+  if (target === "share") {
+    try { await navigator.share({ title: `${s.n}について`, text: prompt }); } catch (_) { /* キャンセル */ }
+    return;
+  }
+  // awaitすると新しいタブを開く操作がブロックされることがあるので、コピーは待たずに開く
   if (navigator.clipboard?.writeText) navigator.clipboard.writeText(prompt).catch(() => {});
-  toast("質問文をコピーした。Claudeが開くよ");
-  window.open(`https://claude.ai/new?q=${encodeURIComponent(prompt)}`, "_blank", "noopener");
+  if (target === "gemini") {
+    toast("質問文をコピーした。Geminiが開いたら貼り付けて送信してね");
+    window.open("https://gemini.google.com/app", "_blank", "noopener");
+  } else {
+    toast("質問文をコピーした。Claudeが開くよ");
+    window.open(`https://claude.ai/new?q=${encodeURIComponent(prompt)}`, "_blank", "noopener");
+  }
+}
+
+/* ---------- 過去の成績(バックテスト) ---------- */
+async function loadBacktest(box) {
+  if (state.demo) { box.textContent = "デモでは表示されません(本番の計算結果にだけ付きます)。"; return; }
+  let bt;
+  try {
+    const res = await fetch("data/backtest.json", { cache: "no-cache" });
+    if (!res.ok) throw new Error(res.status);
+    bt = await res.json();
+  } catch (_) {
+    box.textContent = "まだバックテスト結果がありません(次回の自動計算で作られます)。";
+    return;
+  }
+  const f = (v) => (v == null ? "-" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(1)}%`);
+  const w = (v) => (v == null ? "-" : `${Math.round(v * 100)}%`);
+  const table = (head, rows, bestIdx) => el("div", { class: "tbl-wrap" }, el("table", { class: "tbl" },
+    el("thead", {}, el("tr", {}, ...head.map((h) => el("th", { text: h })))),
+    el("tbody", {}, ...rows.map((r, i) => el("tr", { class: i === bestIdx ? "best" : null }, ...r.map((c) => el("td", { text: c })))))));
+  box.className = "";
+  box.replaceChildren(
+    el("p", { class: "sub", text: `${bt.period.from}〜${bt.period.to} の全${bt.stocks.toLocaleString()}銘柄で、今と同じ条件(底値圏+3ヶ月底打ち)のシグナルが出た${bt.events.toLocaleString()}回について、翌営業日の終値で買ったと仮定して集計。` }),
+    el("h5", { text: "何日持つと良かったか" }),
+    table(["保有", "件数", "平均", "勝率", "適当に買った平均"],
+      bt.hold.map((r) => [`${r.days}日`, (r.n || 0).toLocaleString(), f(r.mean), w(r.win), f(r.base_mean)])),
+    el("p", { class: "muted", style: "font-size:12px;margin:4px 0 0", text: "「適当に買った平均」= 同じ銘柄をランダムな日に買った場合。これより上なら条件に意味がある。" }),
+    el("h5", { text: "利確・損切りの組み合わせ(平均リターン上位10)" }),
+    table(["利確", "損切り", "平均", "勝率", "平均日数"],
+      bt.grid.slice(0, 10).map((r) => [`+${Math.round(r.tp * 100)}%`, r.sl === "floor" ? "底値割れ" : `-${Math.round(r.sl * 100)}%`, f(r.mean), w(r.win), `${Math.round(r.avg_days)}日`]), 0),
+    el("h5", { text: "60日持つ間の最大含み損・含み益" }),
+    el("p", { class: "sub", style: "margin:2px 0 0", text: `含み損: 半分の取引は最悪 ${f(bt.excursion60.mae_med)} まで、4分の1は ${f(bt.excursion60.mae_p25)} 以上下げた` }),
+    el("p", { class: "sub", style: "margin:2px 0 0", text: `含み益: 半分の取引は途中で ${f(bt.excursion60.mfe_med)} まで、4分の1は ${f(bt.excursion60.mfe_p75)} 以上上げた` }),
+    el("h5", { text: "年ごと(60日保有)" }),
+    table(["年", "件数", "平均", "勝率"], bt.by_year.map((r) => [String(r.year), (r.n || 0).toLocaleString(), f(r.mean), w(r.win)])),
+    el("ul", { class: "cav" }, ...(bt.caveats || []).map((c) => el("li", { text: c }))),
+  );
 }
 
 /* ---------- グラフ(線グラフのみ) ---------- */

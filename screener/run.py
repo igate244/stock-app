@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -24,7 +25,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from screener import data, enrich, signals
+from screener import backtest, data, enrich, signals
 from screener.themes import JPX_33_SECTORS, THEME_GENRES, tag_themes
 
 CONFIG = Path(__file__).resolve().parent.parent / "config" / "win_patterns.yaml"
@@ -59,7 +60,7 @@ def load_references(closes: dict[str, pd.Series]) -> list[dict]:
     return refs
 
 
-def screen(limit: int | None = None) -> dict:
+def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict]:
     started = time.time()
     universe = data.load_universe()
     if limit:
@@ -69,7 +70,12 @@ def screen(limit: int | None = None) -> dict:
     ref_tickers = [(wp.get("ticker") or "").strip() for wp in cfg.get("winning_stocks", [])]
     tickers = list(dict.fromkeys(universe["ticker"].tolist() + [t for t in ref_tickers if t]))
 
-    closes = data.download_closes(tickers)
+    # バックテスト用に10年分取得し、毎日の判定(5年位置など)には直近5年分だけを使う
+    closes_full = data.download_closes(tickers, period="10y")
+    closes = {}
+    for t, ser in closes_full.items():
+        cut = ser.index[-1] - pd.DateOffset(years=5)
+        closes[t] = ser[ser.index >= cut]
     refs = load_references(closes)
 
     stocks: list[dict] = []
@@ -141,7 +147,7 @@ def screen(limit: int | None = None) -> dict:
     # STEP7 AI(APIキーがある時だけ)
     enrich.ai_evaluate([c[0] for c in candidates])
 
-    return {
+    return closes_full, {
         "generated_at": datetime.now(JST).isoformat(timespec="minutes"),
         "elapsed_min": round((time.time() - started) / 60, 1),
         "universe_count": len(universe),
@@ -164,12 +170,27 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args()
 
-    result = screen(args.limit)
+    closes, result = screen(args.limit)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "results.json").write_text(json.dumps(result, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     n_pass = sum(1 for s in result["stocks"] if s["st"] == "pass")
     print(f"[done] {len(result['stocks'])} 銘柄 / 候補 {n_pass} / {result['elapsed_min']}分 → {out / 'results.json'}")
+
+    # バックテスト(失敗しても毎日のスクリーニング結果の公開は止めない)
+    try:
+        t0 = time.time()
+        bt = backtest.run(closes)
+        (out / "backtest.json").write_text(json.dumps(bt, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        md = backtest.summary_markdown(bt)
+        print(md)
+        summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary_path:
+            with open(summary_path, "a", encoding="utf-8") as fh:
+                fh.write(md)
+        print(f"[backtest] シグナル {bt['events']} 回 / {round(time.time() - t0)}秒")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[backtest] 失敗: {exc}")
 
 
 if __name__ == "__main__":
