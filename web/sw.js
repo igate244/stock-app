@@ -1,6 +1,6 @@
 // オフラインでも前回の結果を見られるようにするService Worker。
-// 画面(アプリ本体)はキャッシュ優先、結果データ(data/results.json)はネット優先→ダメならキャッシュ。
-const CACHE = "kachipata-v1";
+// 計算結果(data/以下)と画面(index.html)はネット優先→ダメならキャッシュ。アイコン等はキャッシュ優先。
+const CACHE = "kachipata-v2";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png", "./favicon.png"];
 
 self.addEventListener("install", (e) => {
@@ -17,7 +17,7 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== location.origin) return;
 
-  if (url.pathname.endsWith("/data/results.json") || url.pathname.endsWith("index.html") || url.pathname.endsWith("/")) {
+  if (url.pathname.includes("/data/") || url.pathname.endsWith("index.html") || url.pathname.endsWith("/")) {
     // ネット優先(最新の計算結果・最新の画面を取りに行く)
     e.respondWith(
       fetch(e.request)

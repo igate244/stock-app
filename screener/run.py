@@ -270,6 +270,19 @@ def main() -> None:
     if hist is not None:
         (out / "events.json").write_text(json.dumps(_clean({"history": hist}), ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     (out / "results.json").write_text(json.dumps(_clean(result), ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+
+    # 全銘柄のチャート(5年週足+3ヶ月日足)を1銘柄1ファイルで書き出す。画面で銘柄を開いた時だけ読み込む
+    ch_dir = out / "ch"
+    ch_dir.mkdir(parents=True, exist_ok=True)
+    n_ch = 0
+    for x in result["stocks"]:
+        ser = closes.get(x["t"])
+        if ser is None or len(ser) < 30:
+            continue
+        ser5 = ser[ser.index >= ser.index[-1] - pd.DateOffset(years=5)]
+        (ch_dir / f"{x['t'].replace('.T', '')}.json").write_text(json.dumps(_charts(ser5), separators=(",", ":")), encoding="utf-8")
+        n_ch += 1
+    print(f"[charts] {n_ch} 銘柄のチャートを書き出し")
     n_pass = sum(1 for s in result["stocks"] if s["st"] == "pass")
     print(f"[done] {len(result['stocks'])} 銘柄 / 候補 {n_pass} / {result['elapsed_min']}分 → {out / 'results.json'}")
 

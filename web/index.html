@@ -1134,6 +1134,16 @@ function openDetail(s, ctx = null) {
   if (ctx) panel.append(el("div", { class: "why", style: "margin-top:8px;font-size:13px", text: `底打ちの見方では: ${whyText(s)}` }));
 
   if (s.ch) panel.append(chartSection(s));
+  else if (s.st !== "nodata") {
+    // 候補以外の銘柄のチャートは、開いた時に銘柄ごとのファイルを読み込む
+    const ph = el("div", { class: "section" }, el("h4", { text: "チャート" }), el("div", { class: "chart-card sub", style: "padding:24px;text-align:center", text: "チャートを読み込み中…" }));
+    panel.append(ph);
+    loadChart(s).then((ok) => {
+      if (!ph.isConnected) return;
+      if (ok) ph.replaceWith(chartSection(s));
+      else ph.lastChild.textContent = "チャートを読み込めませんでした(次回の自動計算後に見られるようになります)";
+    });
+  }
 
   if (s.st !== "nodata") {
     const stats = el("div", { class: "stats" },
@@ -1203,6 +1213,16 @@ function closeDetail(fromPop) {
 window.addEventListener("popstate", () => closeDetail(true));
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDetail(); });
 $("#sheet").addEventListener("click", (e) => { if (e.target.hasAttribute("data-close")) closeDetail(); });
+
+async function loadChart(s) {
+  if (state.demo) return false;
+  try {
+    const r = await fetch(`data/ch/${encodeURIComponent(code(s.t))}.json`, { cache: "no-cache" });
+    if (!r.ok) return false;
+    s.ch = await r.json();
+    return true;
+  } catch (_) { return false; }
+}
 
 function evWhy(s) {
   const ev = state.data.events;
