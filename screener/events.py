@@ -144,6 +144,11 @@ def collect(universe: pd.DataFrame, closes: dict[str, pd.Series]) -> dict:
 
     # 履歴とマージ(同じ銘柄・同じ種類で7日以内のものは同じイベントとみなす)
     history = _load_history()
+    # 銘柄の判定ルールを改善した時のために、過去分も今のルールで判定し直す
+    for e in history:
+        t2 = _match(e.get("title", ""), codes, names)
+        if t2 and t2 != e.get("t"):
+            e["t"], e["n"] = t2, unicodedata.normalize("NFKC", name_of.get(t2, t2))
     merged: dict[str, dict] = {}
     for e in history + list(found.values()):
         k = f"{e['t']}|{e['type']}|{e['date']}"
