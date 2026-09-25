@@ -119,6 +119,34 @@ main.wrap > * { min-width: 0; }
 .banner { background: var(--accent-wash); border-radius: 14px; padding: 10px 12px; font-size: 13px; color: var(--ink2); }
 .banner strong { color: var(--ink); }
 
+/* ---- 見方の切り替え ---- */
+.modes { display: flex; gap: 4px; background: var(--wash); border-radius: 14px; padding: 4px; margin-bottom: 10px; }
+.modes button { flex: 1; min-height: 36px; border: 0; border-radius: 10px; background: none; font-size: 14px; font-weight: 600; color: var(--ink2); }
+.modes button[aria-pressed="true"] { background: var(--raised); color: var(--ink); font-weight: 800; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.app-bar > .wrap:first-child { padding-bottom: 8px; }
+.app-bar > .wrap + .wrap { padding-block: 0; display: block; }
+.mode { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.mode[hidden] { display: none; }
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.kpi { background: var(--wash); border-radius: 14px; padding: 10px 12px; }
+.kpi .l { font-size: 11.5px; color: var(--muted); font-weight: 700; }
+.kpi .v { font-size: 20px; font-weight: 800; line-height: 1.2; }
+.kpi .v.pos { color: var(--accent-ink); }
+.kpi .h { font-size: 11px; color: var(--ink2); white-space: pre-line; line-height: 1.4; }
+.typechips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-top: 12px; }
+.typechips::-webkit-scrollbar { display: none; }
+.typechips .chip { flex: none; white-space: nowrap; }
+.item.ev { grid-template-columns: 1fr; }
+.ev-top { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.ev-type { font-size: 11.5px; font-weight: 800; padding: 2px 9px; border-radius: 999px; background: var(--accent-wash); color: var(--accent-ink); }
+.ev-type.split { background: var(--good-wash); color: var(--good-ink); }
+.ev-type.upward { background: var(--warn-wash); color: var(--warn-ink); }
+.ev-type.dividend { background: rgba(240, 106, 60, 0.12); color: var(--s2); }
+.ev-title { font-size: 13.5px; color: var(--ink); line-height: 1.45; margin-top: 4px; }
+.ev-title a { color: inherit; text-decoration: underline; text-decoration-color: var(--axis); text-underline-offset: 3px; }
+.ev-foot { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--ink2); }
+.ev-foot span { background: var(--wash); border-radius: 8px; padding: 2px 8px; }
+
 /* ---- 地合いカード ---- */
 .hero { background: var(--hero); color: #fff; border: 0; padding: 18px 18px 14px; position: relative; overflow: hidden; }
 .hero::after { content: ""; position: absolute; right: -60px; top: -60px; width: 180px; height: 180px; border-radius: 50%; background: rgba(255, 255, 255, 0.07); }
@@ -191,7 +219,7 @@ main.wrap > * { min-width: 0; }
 .f-drop { font-size: 12px; color: var(--muted); padding-left: calc(6.6em + 14px); margin-top: -4px; }
 
 /* ---- list ---- */
-.tabs-wrap { position: sticky; top: calc(58px + env(safe-area-inset-top)); z-index: 5; background: var(--page); margin: 0 -16px; padding: 8px 16px 6px; }
+.tabs-wrap { position: sticky; top: var(--hdr, calc(106px + env(safe-area-inset-top))); z-index: 5; background: var(--page); margin: 0 -16px; padding: 8px 16px 6px; }
 .tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; background: var(--wash); border-radius: 14px; padding: 4px; }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
@@ -262,7 +290,7 @@ details.help ul { margin: 6px 0 0; padding-left: 1.2em; }
 .d-head .code { color: var(--muted); font-size: 13px; margin-top: 2px; }
 .d-head .price { margin-top: 8px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .d-head .price b { font-size: 26px; font-weight: 700; }
-.why { margin-top: 12px; font-size: 14px; color: var(--ink2); background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; }
+.why { white-space: pre-line; margin-top: 12px; font-size: 14px; color: var(--ink2); background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; }
 .plan { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .plan .stat .v { font-size: 17px; white-space: nowrap; }
 .plan-note { font-size: 12px; color: var(--muted); margin-top: 6px; }
@@ -354,8 +382,11 @@ details.bt[open] summary::after { content: "－"; }
       <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg></span>
       <div><h1>勝ちパターン探知機</h1><div class="meta" id="meta">読み込み中…</div></div>
     </div>
-    <button class="icon-btn" aria-label="再読み込み" onclick="location.reload()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
+    <button class="icon-btn" aria-label="再読み込み" onclick="location.reload()" style="order:3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
   </div>
+  <div class="wrap"><nav class="modes" id="modes" aria-label="買い時の見方">
+    <button data-m="bottom">底打ち</button><button data-m="vol">出来高急増</button><button data-m="ev">イベント</button>
+  </nav></div>
 </header>
 
 <main class="wrap" id="main">
@@ -396,6 +427,9 @@ const state = {
   sectors: new Set(),
   tab: "pass",
   sort: "best",
+  mode: "bottom",
+  volSort: "ratio",
+  evType: "all",
   q: "",
   shown: PAGE,
 };
@@ -478,14 +512,35 @@ function start(data, demo) {
   state.data = data;
   state.demo = demo;
   for (const x of data.stocks || []) if (x.n) x.n = x.n.normalize("NFKC"); // 全角英数の銘柄名を読みやすく
+  for (const e of data.events?.recent || []) { if (e.n) e.n = e.n.normalize("NFKC"); if (e.title) e.title = e.title.normalize("NFKC"); }
   const knownThemes = new Set(Object.values(data.genres || {}).flat());
   state.themes = new Set(recall("themes", []).filter((t) => knownThemes.has(t)));
   state.sectors = new Set(recall("sectors", []).filter((s) => (data.sectors || []).includes(s)));
   state.tab = recall("tab", "pass");
   state.sort = recall("sort", "best");
+  state.mode = ["bottom", "vol", "ev"].includes(recall("mode", "bottom")) ? recall("mode", "bottom") : "bottom";
+  state.volSort = recall("volSort", "ratio");
   renderShell();
+  syncHeaderHeight();
+  setMode(state.mode, true);
   render();
 }
+
+/* ---------- 見方(底打ち/出来高急増/イベント)の切り替え ---------- */
+function setMode(m, quiet) {
+  state.mode = m;
+  store("mode", m);
+  for (const b of document.querySelectorAll("#modes button")) b.setAttribute("aria-pressed", String(b.dataset.m === m));
+  for (const sec of document.querySelectorAll(".mode")) sec.hidden = sec.dataset.mode !== m;
+  if (!quiet) window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+}
+for (const b of document.querySelectorAll("#modes button")) b.addEventListener("click", () => setMode(b.dataset.m));
+function syncHeaderHeight() {
+  const h = document.querySelector(".app-bar")?.offsetHeight;
+  if (h) document.documentElement.style.setProperty("--hdr", `${h}px`);
+}
+window.addEventListener("resize", syncHeaderHeight);
+syncHeaderHeight();
 
 /* ---------- 画面の骨組み ---------- */
 function renderShell() {
@@ -514,8 +569,12 @@ function renderShell() {
   main.append(el("div", { class: "filterbar", id: "filterbar" }));
   buildFilterSheet();
 
+  /* ===== 底打ちモード ===== */
+  const bottom = el("div", { class: "mode", "data-mode": "bottom" });
+  main.append(bottom);
+
   /* 絞り込み */
-  main.append(el("section", { class: "card", "aria-labelledby": "h-funnel" },
+  bottom.append(el("section", { class: "card", "aria-labelledby": "h-funnel" },
     el("div", { class: "row-head" }, el("h2", { id: "h-funnel", text: "絞り込みの様子" }), el("span", { class: "selection-line", id: "sel-line" })),
     el("div", { class: "funnel", id: "funnel" })));
 
@@ -528,7 +587,7 @@ function renderShell() {
   search.addEventListener("input", () => { state.q = search.value.trim(); state.shown = PAGE; renderList(); });
   const sort = el("select", { "aria-label": "並び順", id: "sort" });
   sort.addEventListener("change", () => { state.sort = sort.value; store("sort", state.sort); state.shown = PAGE; renderList(); });
-  main.append(el("section", { id: "list-sec", "aria-label": "銘柄一覧" },
+  bottom.append(el("section", { id: "list-sec", "aria-label": "銘柄一覧" },
     el("div", { class: "tabs-wrap" }, tabs),
     el("div", { class: "tools" }, search, sort),
     el("p", { class: "tab-note", id: "tab-note" }),
@@ -540,13 +599,19 @@ function renderShell() {
   const faDet = el("details", { class: "bt" }, el("summary", {}, el("div", {}, el("h2", { text: "条件の効き目分析" }),
     el("div", { class: "sub", style: "margin-top:2px", text: "どんな条件のシグナルが勝ちやすかったか" })), ), faBox);
   faDet.addEventListener("toggle", () => { if (faDet.open && !faDet.dataset.loaded) { faDet.dataset.loaded = "1"; loadFactors(faBox); } });
-  main.append(el("section", { class: "card" }, faDet));
+  bottom.append(el("section", { class: "card" }, faDet));
 
   /* 過去の成績(バックテスト) */
   const btBox = el("div", { id: "bt-body", class: "sub", text: "読み込み中…" });
   const btDet = el("details", { class: "bt" }, el("summary", {}, el("h2", { text: "過去の成績(バックテスト)" })), btBox);
   btDet.addEventListener("toggle", () => { if (btDet.open && !btDet.dataset.loaded) { btDet.dataset.loaded = "1"; loadBacktest(btBox); } });
-  main.append(el("section", { class: "card" }, btDet));
+  bottom.append(el("section", { class: "card" }, btDet));
+
+  /* ===== 出来高急増モード ===== */
+  main.append(buildVolMode());
+
+  /* ===== イベントモード ===== */
+  main.append(buildEvMode());
 
   /* フッター */
   const p = d.params || {};
@@ -564,16 +629,167 @@ function renderShell() {
         el("li", { text: `類似度: 直近60営業日の形が、勝ちパターン銘柄(${(d.refs || []).join("・") || "-"})が大きく上がる前(底〜底の20営業日後)の形とどれだけ似ているか(相関、1に近いほど似ている)` }),
         el("li", { text: "★ベスト条件: 過去10年の統計で成績が一番良かった「底打ち候補 × 類似度0.90以上」。相場全体が下向きの時の方が成績が良かった" }),
         el("li", { text: "地合い: 日本株全体(全銘柄の平均)の指数が200日移動平均より上なら上向き、下なら下向き" }),
-        el("li", { text: "業績・ニュースは候補に残った銘柄だけ取得(業績はyfinance、ニュースはGoogleニュース)" }))),
+        el("li", { text: "業績・ニュースは候補に残った銘柄だけ取得(業績はyfinance、ニュースはGoogleニュース)" }),
+        el("li", { text: "出来高急増: 直近3営業日に、出来高が20日平均の3倍以上 & 株価+3%以上 & 平均売買代金3千万円以上" }),
+        el("li", { text: "イベント: Googleニュースの見出しから自社株買い・株式分割・上方修正・増配を自動検出(取りこぼし・誤判定あり)" }))),
     el("div", { class: "muted", text: "株価: Yahoo Finance(yfinance)/銘柄一覧: JPX。投資助言ではなく、自分で判断するための参考情報。" })));
 
   syncSort();
 }
 
+/* ---------- 出来高急増モード ---------- */
+const fmtP = (v) => (v == null ? "-" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(1)}%`);
+const fmtW = (v) => (v == null ? "-" : `${Math.round(v * 100)}%`);
+const oku = (m) => (m == null ? "-" : m >= 100 ? `${(m / 100).toFixed(m >= 1000 ? 0 : 1)}億円` : `${m}百万円`);
+
+function buildVolMode() {
+  const sec = el("div", { class: "mode", "data-mode": "vol" });
+  const kpi = el("div", { class: "kpis", id: "vol-kpi" });
+  sec.append(el("section", { class: "card" },
+    el("div", { class: "row-head" }, el("h2", { text: "出来高急増" }), el("span", { class: "selection-line", id: "vol-count" })),
+    el("p", { class: "sub", style: "margin:6px 0 0", text: "直近3営業日に、出来高が普段(20日平均)の3倍以上に増えて、株価が+3%以上上がった銘柄。大口の資金が入ったサインとされる。" }),
+    kpi));
+  getBacktest().then((bt) => {
+    const vb = bt?.volume;
+    if (!vb) { kpi.replaceChildren(el("div", { class: "sub", style: "grid-column:1/-1", text: "過去の成績は次回の自動計算で表示されます。" })); return; }
+    kpi.replaceChildren(...vb.hold.filter((h) => [5, 20, 60].includes(h.days)).map((h) =>
+      el("div", { class: "kpi" }, el("div", { class: "l", text: `${h.days}日後の平均` }),
+        el("div", { class: `v${(h.mean ?? 0) > (h.base_mean ?? 0) ? " pos" : ""}`, text: fmtP(h.mean) }),
+        el("div", { class: "h", text: `勝率${fmtW(h.win)}\n適当買い${fmtP(h.base_mean)}` }))));
+  });
+  const sort = el("select", { "aria-label": "並び順", id: "vol-sort" },
+    ...[["ratio", "出来高の倍率順"], ["d", "上昇率順"], ["to", "売買代金順"], ["pos", "株価位置が低い順"], ["new", "新しい順"]].map(([v, l]) => el("option", { value: v, text: l })));
+  sort.value = state.volSort;
+  sort.addEventListener("change", () => { state.volSort = sort.value; store("volSort", sort.value); renderVol(); });
+  sec.append(el("section", { "aria-label": "出来高急増の銘柄" }, el("div", { class: "tools" }, el("span", { class: "fhint", style: "flex:1;align-self:center", id: "vol-note" }), sort),
+    el("ul", { class: "list", id: "vol-list" })));
+
+  const box = el("div", { class: "sub", text: "読み込み中…" });
+  const det = el("details", { class: "bt" }, el("summary", {}, el("div", {}, el("h2", { text: "出来高急増の効き目分析" }),
+    el("div", { class: "sub", style: "margin-top:2px", text: "どんな急増が勝ちやすかったか・利確損切り" }))), box);
+  det.addEventListener("toggle", () => { if (det.open && !det.dataset.loaded) { det.dataset.loaded = "1"; loadVolAnalysis(box); } });
+  sec.append(el("section", { class: "card" }, det));
+  return sec;
+}
+
+async function loadVolAnalysis(box) {
+  if (state.demo) { box.textContent = "デモでは表示されません(本番の計算結果にだけ付きます)。"; return; }
+  const vb = (await getBacktest())?.volume;
+  if (!vb?.factors) { box.textContent = "まだ分析結果がありません(次回の自動計算で作られます)。"; return; }
+  renderFactors(box, vb.factors, "出来高急増");
+  const table = (head, rows, bestIdx) => el("div", { class: "tbl-wrap" }, el("table", { class: "tbl" },
+    el("thead", {}, el("tr", {}, ...head.map((h) => el("th", { text: h })))),
+    el("tbody", {}, ...rows.map((r, i) => el("tr", { class: i === bestIdx ? "best" : null }, ...r.map((c) => el("td", { text: c })))))));
+  box.append(
+    el("h5", { text: "何日持つと良かったか" }),
+    table(["保有", "平均", "中央値", "勝率", "適当買い平均"], vb.hold.map((r) => [`${r.days}日`, fmtP(r.mean), fmtP(r.median), fmtW(r.win), fmtP(r.base_mean)])),
+    el("h5", { text: "利確・損切り(最大60営業日)" }),
+    table(["利確", "損切り", "平均", "勝率", "平均日数"], vb.rules.map((r) => [`+${Math.round(r.tp * 100)}%`, `-${Math.round(r.sl * 100)}%`, fmtP(r.mean), fmtW(r.win), `${Math.round(r.avg_days)}日`]), 0),
+    el("h5", { text: "年ごと(20日保有)" }),
+    table(["年", "件数", "平均", "勝率"], vb.by_year.map((r) => [String(r.year), (r.n || 0).toLocaleString(), fmtP(r.mean), fmtW(r.win)])));
+}
+
+function renderVol(pool = selected()) {
+  const ul = $("#vol-list");
+  if (!ul) return;
+  let list = pool.filter((s) => s.vs);
+  const k = state.volSort;
+  const key = { ratio: (s) => -s.vs.r, d: (s) => -s.vs.d, to: (s) => -s.vs.to, pos: (s) => s.vs.pos ?? 9, new: (s) => s.vs.age * 1000 - s.vs.r }[k] || ((s) => -s.vs.r);
+  list = list.slice().sort((a, b) => key(a) - key(b));
+  $("#vol-count").textContent = `${list.length}銘柄`;
+  $("#vol-note").textContent = state.themes.size + state.sectors.size ? "絞り込み中" : "全銘柄から";
+  ul.replaceChildren();
+  if (!list.length) ul.append(el("li", { class: "empty", text: "該当なし" }));
+  for (const s of list.slice(0, 200)) {
+    const v = s.vs;
+    const facts = [
+      { t: `当日 ${fmtP(v.d)}` },
+      { t: `売買代金 ${oku(v.to)}/日` },
+      v.hi ? { t: "52週高値更新", star: true } : null,
+      v.pos != null && v.pos <= 0.3 ? { t: "底値圏から", star: true } : null,
+      { t: v.age === 0 ? "今日" : `${v.age}営業日前 → その後${fmtP(v.since)}` },
+    ].filter(Boolean);
+    ul.append(el("li", {}, el("button", { class: "item", onclick: () => openDetail(s, "vol") },
+      el("span", { class: "name", text: s.n }),
+      el("span", { class: "metric" }, el("b", { text: `×${v.r}` }), el("small", { text: "出来高" })),
+      el("span", { class: "code", text: `${code(s.t)} ・ ${s.s}` }),
+      el("span", { class: "facts" }, ...facts.map((f) => el("span", { class: f.star ? "star" : null, text: f.t }))))));
+  }
+}
+
+function volWhy(s) {
+  const v = s.vs;
+  return `${v.age === 0 ? "今日" : `${v.age}営業日前(${v.date.slice(5).replace("-", "/")})`}、出来高が普段の${v.r}倍に急増して株価が${fmtP(v.d)}。` +
+    `${v.hi ? "52週高値を更新した。" : ""}${v.pos != null && v.pos <= 0.3 ? "まだ5年の底値圏にいる。" : v.pos != null && v.pos >= 0.7 ? "5年の高値圏にいる。" : ""}` +
+    `${v.pre != null ? `急増前の20日は${fmtP(v.pre)}。` : ""}${v.age > 0 ? `急増した日から今日まで${fmtP(v.since)}。` : ""}`;
+}
+
+/* ---------- イベントモード ---------- */
+function buildEvMode() {
+  const sec = el("div", { class: "mode", "data-mode": "ev" });
+  const ev = state.data.events;
+  sec.append(el("section", { class: "card" },
+    el("div", { class: "row-head" }, el("h2", { text: "イベント" }), el("span", { class: "selection-line", id: "ev-count" })),
+    el("p", { class: "sub", style: "margin:6px 0 0", text: "直近2週間のニュース見出しから、自社株買い・株式分割・上方修正・増配を自動で拾った銘柄。見出しのリンクで元記事を確認してね(取りこぼし・誤判定あり)。" }),
+    el("div", { class: "typechips", id: "ev-types" })));
+  sec.append(el("section", { "aria-label": "イベント一覧" }, el("ul", { class: "list", id: "ev-list" })));
+
+  // イベント後の値動き(履歴がたまるほど信頼できる)
+  const stats = (ev?.stats || []);
+  const rows = stats.map((r) => [r.label, String(r.n), ...["1", "5", "20", "60"].map((h) => (r[`d${h}`] ? `${fmtP(r[`d${h}`].mean)}\n${fmtW(r[`d${h}`].win)}・${r[`d${h}`].n}件` : "-"))]);
+  sec.append(el("section", { class: "card" },
+    el("h2", { text: "イベント後の値動き" }),
+    el("p", { class: "sub", style: "margin:6px 0 0", text: `イベントの翌営業日の終値で買った場合の、その後の平均(上段)と勝率(下段)。${ev?.since ? `${ev.since.replace(/-/g, "/")}から毎日たまっていくデータ。` : "毎日たまっていくデータ。"}件数が少ないうちはあてにならないので参考程度に。` }),
+    el("div", { class: "tbl-wrap" }, el("table", { class: "tbl" },
+      el("thead", {}, el("tr", {}, ...["種類", "件数", "翌日", "5日後", "20日後", "60日後"].map((h) => el("th", { text: h })))),
+      el("tbody", {}, ...rows.map((r) => el("tr", {}, ...r.map((c) => el("td", { text: c }))))))),
+    el("p", { class: "muted", style: "font-size:12px;margin:8px 0 0", text: "一般に、自社株買い・上方修正・増配は発表直後に上がりやすく、株式分割は個人が買いやすくなることで注目されやすいと言われる。ただし発表の翌日に大きく跳ねて、その後は下がることも多い。" })));
+  return sec;
+}
+
+function renderEv(pool = selected()) {
+  const ul = $("#ev-list");
+  if (!ul) return;
+  const ev = state.data.events;
+  const byT = new Map(state.data.stocks.map((x) => [x.t, x]));
+  const inPool = new Set(pool.map((x) => x.t));
+  const all = (ev?.recent || []).filter((e) => inPool.has(e.t));
+  const types = ev?.types || {};
+  const counts = {};
+  for (const e of all) counts[e.type] = (counts[e.type] || 0) + 1;
+  const chips = $("#ev-types");
+  chips.replaceChildren(...[["all", "すべて"], ...Object.entries(types)].map(([k, l]) =>
+    el("button", { class: "chip", "aria-pressed": String(state.evType === k), onclick: () => { state.evType = k; renderEv(); } },
+      l, el("span", { class: "n", text: String(k === "all" ? all.length : counts[k] || 0) }))));
+  const list = state.evType === "all" ? all : all.filter((e) => e.type === state.evType);
+  $("#ev-count").textContent = `${list.length}件`;
+  ul.replaceChildren();
+  if (!ev) { ul.append(el("li", { class: "empty", text: "イベントのデータは次回の自動計算から表示されます。" })); return; }
+  if (!list.length) ul.append(el("li", { class: "empty", text: "該当なし" }));
+  for (const e of list) {
+    const s = byT.get(e.t);
+    const url = safeUrl(e.url);
+    const title = url ? el("a", { href: url, target: "_blank", rel: "noopener", onclick: (ev2) => ev2.stopPropagation() }, e.title) : el("span", { text: e.title });
+    const foot = [
+      s?.pos != null ? `5年位置 ${pct(s.pos)}` : null,
+      e.now != null ? `発表後 ${fmtP(e.now)}` : "発表後の値動きはまだ",
+      s?.st === "pass" ? "底打ち候補にも該当" : null,
+      s?.vs ? `出来高×${s.vs.r}` : null,
+    ].filter(Boolean);
+    ul.append(el("li", {}, el("div", { class: "item ev", role: "button", tabindex: 0, onclick: () => s && openDetail(s, "ev"), onkeydown: (k) => { if (k.key === "Enter" && s) openDetail(s, "ev"); } },
+      el("div", { class: "ev-top" }, el("span", { class: `ev-type ${e.type}`, text: types[e.type] || e.type }),
+        el("span", { text: `${e.date.slice(5).replace("-", "/")}${e.src ? " ・ " + e.src : ""}` })),
+      el("div", { class: "name", style: "margin-top:6px", text: `${e.n}` }),
+      el("div", { class: "code", text: `${code(e.t)}${s ? " ・ " + s.s : ""}` }),
+      el("div", { class: "ev-title" }, title),
+      el("div", { class: "ev-foot" }, ...foot.map((t) => el("span", { text: t }))))));
+  }
+}
+
 /* ---------- 地合いカード ---------- */
 function marketCard(m) {
   const card = el("section", { class: "card hero", "aria-label": "今の地合い" });
-  const verdict = m.up ? el("span", { class: "verdict bad", text: "シグナルが効きにくい地合い" }) : el("span", { class: "verdict good", text: "シグナルが効きやすい地合い" });
+  const verdict = m.up ? el("span", { class: "verdict bad", text: "底打ちが効きにくい地合い" }) : el("span", { class: "verdict good", text: "底打ちが効きやすい地合い" });
   card.append(
     el("div", { class: "hero-top" }, el("span", { class: "eyebrow", text: "今の地合い" }), verdict),
     el("div", { class: "hero-main" }, el("b", { text: m.up ? "上向き" : "下向き" }),
@@ -595,7 +811,7 @@ function marketCard(m) {
   getBacktest().then((bt) => {
     const r = (bt?.by_regime || []).reduce((o, x) => ((o[x.regime] = x), o), {});
     const combo = (bt?.by_similarity?.combo || []).reduce((o, x) => ((o[x.key] = x), o), {});
-    if (!r.up || !r.down) return;
+    if (!r.up || !r.down || r.up.h60?.mean == null || r.down.h60?.mean == null) return;
     const f = (v) => `${v > 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
     const cur = m.up ? r.up : r.down;
     const best = combo[m.up ? "sig_90_up" : "sig_90_down"];
@@ -748,6 +964,8 @@ function render() {
     b.querySelector(".n").textContent = (by[b.dataset.st] || 0).toLocaleString();
   }
   renderList(pool);
+  renderVol(pool);
+  renderEv(pool);
 }
 
 function setTab(st, scroll) {
@@ -868,19 +1086,22 @@ function passWhy(s) {
   return `底値圏(5年位置${pct(s.pos)})で、直近3ヶ月に${pct(s.dec)}下げたあと底から${pct(s.reb, true)}反発。${s.sim_ref ? `直近60日の形は${s.sim_ref}が大きく上がる前の形に一番近い(類似度${(s.sim ?? 0).toFixed(2)})。` : ""}`;
 }
 
-function openDetail(s) {
+function openDetail(s, ctx = null) {
   const panel = $("#panel");
   panel.replaceChildren();
   panel.scrollTop = 0;
   const closeBtn = el("button", { class: "close", onclick: () => closeDetail() }, "閉じる");
   panel.append(el("div", { class: "sheet-top" }, el("span", { class: "grab", "aria-hidden": "true" }),
-    el("span", { class: s.st === "pass" ? "pill pass" : "pill", text: STATUS[s.st].label }), closeBtn));
+    ctx === "vol" ? el("span", { class: "pill pass", text: "出来高急増" })
+      : ctx === "ev" ? el("span", { class: "pill pass", text: "イベント" })
+        : el("span", { class: s.st === "pass" ? "pill pass" : "pill", text: STATUS[s.st].label }), closeBtn));
 
   panel.append(el("div", { class: "d-head" },
     el("h3", { id: "d-title", text: s.n }),
     el("div", { class: "code", text: `${code(s.t)} ・ ${s.s}${(s.th || []).length ? " ・ " + s.th.join("・") : ""}` }),
     s.px != null ? el("div", { class: "price" }, el("b", { text: `${yen(s.px)}円` }), el("span", { class: "sub", text: "最新終値" })) : null),
-    el("div", { class: "why", text: whyText(s) }));
+    el("div", { class: "why", text: ctx === "vol" && s.vs ? volWhy(s) : ctx === "ev" ? evWhy(s) : whyText(s) }));
+  if (ctx) panel.append(el("div", { class: "why", style: "margin-top:8px;font-size:13px", text: `底打ちの見方では: ${whyText(s)}` }));
 
   if (s.ch) panel.append(chartSection(s));
 
@@ -893,7 +1114,8 @@ function openDetail(s) {
     panel.append(el("div", { class: "section" }, el("h4", { text: "数字" }), stats));
   }
 
-  if (s.st === "pass" && s.px != null) panel.append(planSection(s));
+  if (s.st === "pass" && s.px != null && !ctx) panel.append(planSection(s));
+  if (ctx === "vol" && s.vs) panel.append(volPlan(s));
 
   if (s.ai) {
     panel.append(el("div", { class: "section" }, el("h4", { text: "AI評価" }),
@@ -952,6 +1174,30 @@ window.addEventListener("popstate", () => closeDetail(true));
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDetail(); });
 $("#sheet").addEventListener("click", (e) => { if (e.target.hasAttribute("data-close")) closeDetail(); });
 
+function evWhy(s) {
+  const ev = state.data.events;
+  const mine = (ev?.recent || []).filter((e) => e.t === s.t);
+  return mine.map((e) => `${e.date.slice(5).replace("-", "/")} ${ev.types[e.type]}: ${e.title}`).join("\n") || "イベント情報なし";
+}
+
+/* 出来高急増: 過去の統計で平均が一番良かった利確・損切りを今の株価に当てはめる */
+function volPlan(s) {
+  const sec = el("div", { class: "section" }, el("h4", { text: "売買の目安(出来高急増の過去統計)" }), el("div", { class: "sub", text: "読み込み中…" }));
+  getBacktest().then((bt) => {
+    const vb = bt?.volume;
+    const r = vb?.rules?.[0];
+    const h20 = vb?.hold?.find((x) => x.days === 20);
+    if (!r) { sec.lastChild.textContent = "過去の統計は次回の自動計算で表示されます。"; return; }
+    sec.lastChild.replaceWith(el("div", {},
+      el("div", { class: "plan" },
+        stat("利確", `${yen(s.px * (1 + r.tp))}円`, `+${Math.round(r.tp * 100)}%`),
+        stat("損切り", `${yen(s.px * (1 - r.sl))}円`, `-${Math.round(r.sl * 100)}%`),
+        stat("期限", "60日", "営業日の目安")),
+      el("div", { class: "plan-note", text: `今日の終値で買った場合。過去10年の出来高急増では、このルールで平均${fmtP(r.mean)}・勝率${fmtW(r.win)}(平均${Math.round(r.avg_days)}日)。20日持ちっぱなしなら平均${fmtP(h20?.mean)}・勝率${fmtW(h20?.win)}。投資判断は自分で。` })));
+  });
+  return sec;
+}
+
 /* 過去の統計で一番バランスが良かった売買ルールを、今の株価に当てはめた目安 */
 function planSection(s) {
   const low = s.reb != null ? s.px / (1 + s.reb) : null;
@@ -1009,14 +1255,19 @@ async function askAI(s, target) {
 async function loadFactors(box) {
   if (state.demo) { box.textContent = "デモでは表示されません(本番の計算結果にだけ付きます)。"; return; }
   const bt = await getBacktest();
-  const fa = bt?.factors;
-  if (!fa) { box.textContent = "まだ分析結果がありません(次回の自動計算で作られます)。"; return; }
+  if (!bt?.factors) { box.textContent = "まだ分析結果がありません(次回の自動計算で作られます)。"; return; }
+  renderFactors(box, bt.factors, "底打ちシグナル");
+}
+
+function renderFactors(box, fa, what) {
   const b = fa.base;
+  const H = fa.horizon || 60;
   const f = (v) => (v == null ? "-" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(1)}%`);
   const w = (v) => (v == null ? "-" : `${Math.round(v * 100)}%`);
   const all = fa.factors.flatMap((fc) => fc.buckets.map((x) => ({ ...x, factor: fc.label })));
-  const good = all.filter((x) => x.stable && x.n >= 300).sort((p, q) => q.mean60 - p.mean60).slice(0, 5);
-  const bad = all.filter((x) => x.n >= 300 && x.h1 != null && x.h2 != null && x.h1 < b.h1 && x.h2 < b.h2)
+  const minN = Math.max(100, Math.round(b.n * 0.02));
+  const good = all.filter((x) => x.stable && x.n >= minN).sort((p, q) => q.mean60 - p.mean60).slice(0, 5);
+  const bad = all.filter((x) => x.n >= minN && x.h1 != null && x.h2 != null && x.h1 < b.h1 && x.h2 < b.h2)
     .sort((p, q) => p.mean60 - q.mean60).slice(0, 5);
   const rankList = (arr, cls) => el("ol", { class: `rank ${cls}` }, ...arr.map((x) => el("li", {},
     el("span", { class: "rk-name" }, el("small", { text: x.factor }), x.label),
@@ -1039,7 +1290,7 @@ async function loadFactors(box) {
 
   box.className = "";
   box.replaceChildren(
-    el("p", { class: "sub", text: `過去10年の底打ちシグナル ${b.n.toLocaleString()}回を、シグナルが出た日に分かっていた条件で分けて、60営業日後の成績を比べた。全体の平均は ${f(b.mean60)}(勝率${w(b.win60)})。` }),
+    el("p", { class: "sub", text: `過去10年の${what} ${b.n.toLocaleString()}回を、その日に分かっていた条件で分けて、${H}営業日後の成績を比べた。全体の平均は ${f(b.mean60)}(勝率${w(b.win60)})。` }),
     el("h5", { text: "効いていた条件 TOP5" }),
     good.length ? rankList(good, "good") : el("p", { class: "sub", text: "該当なし" }),
     el("h5", { text: "避けた方がよかった条件" }),
@@ -1051,7 +1302,7 @@ async function loadFactors(box) {
         el("span", { class: "rk-name" }, el("small", { text: `${x.n.toLocaleString()}件・2020年除く ${f(x.ex2020)}` }), `${x.a} × ${x.b}`),
         el("span", { class: "rk-val" }, el("b", { text: f(x.mean60) }), el("small", { text: `勝率${w(x.win60)}` }))))),
     ] : []),
-    el("h5", { text: "条件ごとの成績(60日後の平均)" }),
+    el("h5", { text: `条件ごとの成績(${H}日後の平均)` }),
     el("p", { class: "muted", style: "font-size:12px;margin:0 0 4px", text: "縦線=全体平均。色付き=全体平均より上。◎=前半・後半とも全体平均超え。右の%は勝率。" }),
     ...fa.factors.map(factorBlock),
   );
@@ -1415,6 +1666,7 @@ function makeDemo() {
       rec.cmp = { a, b, b_at: "2023-11-08", k: 8 };
       rec.earn = k % 3 === 2 ? { has_data: false, trend: "データ不足" } : { has_data: true, trend: k % 2 ? "改善" : "横ばい", metric: "営業利益", rev_yoy: 0.08, profit_yoy: k % 2 ? 0.21 : -0.02, profit_qoq: 0.05 };
       rec.news = [{ d: "09/20", t: "(デモ)架空のニュース見出しがここに並びます", u: "" }];
+      if (k % 3 === 0) rec.vs = { r: +(3 + rnd() * 8).toFixed(1), d: +(0.03 + rnd() * 0.12).toFixed(4), to: Math.round(50 + rnd() * 3000), hi: k % 2 === 0, pos: rec.pos, pre: -0.05, age: k % 3, date: "2026-09-24", since: 0.02 };
       if (k < 3) rec.ai = { score: +(0.8 - k * 0.07).toFixed(2), comment: "(デモ)AI評価のコメントがここに出ます。良い点と懸念点を2〜3文で。" };
     }
     stocks.push(rec);
@@ -1424,7 +1676,13 @@ function makeDemo() {
   for (let i = 0; i < 450; i++) mma.push(i < 199 ? null : my.slice(i - 199, i + 1).reduce((a, b) => a + b, 0) / 200);
   const market = { label: "日本株全体(全銘柄の平均)", up: my[449] > mma[449], gap: +(my[449] / mma[449] - 1).toFixed(4), date: "",
     chart: { b: "", x: [], y: my.slice(200).map((v) => +v.toFixed(2)), ma: mma.slice(200).map((v) => +v.toFixed(2)) } };
-  return { market, generated_at: new Date().toISOString(), universe_count: stocks.length, params: { near_low: 0.3, min_decline: 0.15, min_rebound: 0.1 },
+  const passS = stocks.filter((x) => x.st === "pass");
+  const events = { types: { buyback: "自社株買い", split: "株式分割", upward: "上方修正", dividend: "増配" }, since: "2026-09-01",
+    recent: passS.slice(0, 5).map((x, i) => ({ t: x.t, n: x.n, type: ["buyback", "split", "upward", "dividend", "buyback"][i], date: "2026-09-2" + i,
+      title: `(デモ)${x.n}、${["自社株買いを発表", "1株を3株に株式分割", "今期経常を上方修正", "増配を発表", "自己株式取得を決議"][i]}`, url: "", src: "デモ", now: 0.03 * (i - 1) })),
+    stats: [{ type: "buyback", label: "自社株買い", n: 12, d1: { n: 10, mean: 0.021, win: 0.7 }, d5: { n: 8, mean: 0.015, win: 0.6 } },
+      { type: "split", label: "株式分割", n: 5 }, { type: "upward", label: "上方修正", n: 20, d1: { n: 18, mean: 0.034, win: 0.72 } }, { type: "dividend", label: "増配", n: 7 }] };
+  return { market, events, generated_at: new Date().toISOString(), universe_count: stocks.length, params: { near_low: 0.3, min_decline: 0.15, min_rebound: 0.1 },
     genres, sectors, refs: ["三菱電機", "オムロン", "キーエンス", "ABEJA", "円谷フィールズ"], stocks };
 }
 

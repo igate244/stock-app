@@ -37,22 +37,38 @@ def load_universe() -> pd.DataFrame:
     return universe.dropna(subset=["ticker", "name"]).drop_duplicates("ticker").reset_index(drop=True)
 
 
-def _extract_closes(raw: pd.DataFrame, tickers: list[str]) -> dict[str, pd.Series]:
-    """yf.downloadの戻り値(列の持ち方がバージョンで揺れる)から、銘柄ごとの終値Seriesを取り出す。"""
+def _extract_closes(raw: pd.DataFrame, tickers: list[str], volumes: dict | None = None) -> dict[str, pd.Series]:
+    """
+    yf.downloadの戻り値(列の持ち方がバージョンで揺れる)から、銘柄ごとの終値Seriesを取り出す。
+    volumes(dict)を渡すと、出来高も終値と同じ日付にそろえて入れる。
+    """
     out: dict[str, pd.Series] = {}
     if raw is None or raw.empty:
         return out
+    vols = None
     if isinstance(raw.columns, pd.MultiIndex):
         lv0 = raw.columns.get_level_values(0)
         closes = raw["Close"] if "Close" in lv0 else raw.xs("Close", axis=1, level=1)
+        if volumes is not None:
+            if "Volume" in lv0:
+                vols = raw["Volume"]
+            elif "Volume" in raw.columns.get_level_values(1):
+                vols = raw.xs("Volume", axis=1, level=1)
     else:  # 単一銘柄・フラット列
         closes = raw[["Close"]].rename(columns={"Close": tickers[0]})
+        if volumes is not None and "Volume" in raw.columns:
+            vols = raw[["Volume"]].rename(columns={"Volume": tickers[0]})
     for t in closes.columns:
         s = closes[t].dropna()
         s = s[s > 0]
         s = _drop_glitches(s)
         if len(s) >= 30:
-            s.index = pd.to_datetime(s.index).tz_localize(None)
+            idx = pd.to_datetime(s.index).tz_localize(None)
+            if vols is not None and t in vols.columns:
+                v = vols[t].reindex(s.index).fillna(0).astype(float)
+                v.index = idx
+                volumes[str(t)] = v
+            s.index = idx
             out[str(t)] = s.astype(float)
     return out
 
@@ -73,8 +89,9 @@ def _drop_glitches(s: pd.Series) -> pd.Series:
     return s.loc[s.index >= last_bad]
 
 
-def download_closes(tickers: list[str], period: str = "5y", batch_size: int = 150) -> dict[str, pd.Series]:
-    """全銘柄の終値を一括取得。取れなかった銘柄は小さいバッチで1回だけリトライ。"""
+def download_closes(tickers: list[str], period: str = "5y", batch_size: int = 150,
+                    volumes: dict[str, pd.Series] | None = None) -> dict[str, pd.Series]:
+    """全銘柄の終値を一括取得(volumesを渡すと出来高もそこに入れる)。取れなかった銘柄は小さいバッチでリトライ。"""
     result: dict[str, pd.Series] = {}
 
     def run(batch: list[str]) -> None:
@@ -89,7 +106,7 @@ def download_closes(tickers: list[str], period: str = "5y", batch_size: int = 15
                     threads=True,
                     progress=False,
                 )
-                result.update(_extract_closes(raw, batch))
+                result.update(_extract_closes(raw, batch, volumes))
                 return
             except Exception as exc:  # noqa: BLE001 — レート制限等は待って再試行
                 wait = 30 * (attempt + 1)

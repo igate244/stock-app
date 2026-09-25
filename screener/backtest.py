@@ -363,10 +363,22 @@ def _bucket_label(spec, v):
     return None
 
 
-def _factor_analysis(rows: list[dict]) -> dict | None:
+def _factor_analysis(rows: list[dict], factors=None, ret_key: str = "r60", rule_key: str = "r15",
+                     horizon: int = 60, pair_keys_exclude=("month", "sector"), note: str | None = None) -> dict | None:
+    """
+    rows(1シグナル=1行)を factors の条件で分けて成績を比べる。
+    出力の mean60/win60 などの名前は互換のため固定で、実際の保有日数は horizon。
+    """
+    factors = factors or FACTORS
     if not rows:
         return None
     df = pd.DataFrame(rows)
+    if ret_key != "r60":
+        df = df.rename(columns={ret_key: "r60"})
+    if rule_key != "r15":
+        df = df.rename(columns={rule_key: "r15"})
+    if "r15" not in df:
+        df["r15"] = np.nan
     df = df[df["r60"].notna()].copy()
     if df.empty:
         return None
@@ -398,8 +410,8 @@ def _factor_analysis(rows: list[dict]) -> dict | None:
             "r15_win": round(float((r15 > 0).mean()), 4) if len(r15) >= 30 else None,
         }
 
-    factors = []
-    for key, label, spec in FACTORS:
+    out_factors = []
+    for key, label, spec in factors:
         if key not in df:
             continue
         if spec is None:
@@ -415,10 +427,11 @@ def _factor_analysis(rows: list[dict]) -> dict | None:
             if len(sub) >= (FACTOR_MIN_N if spec is None else 30):
                 buckets.append({"label": str(b), **summarize(sub)})
         if buckets:
-            factors.append({"key": key, "label": label, "buckets": buckets})
+            out_factors.append({"key": key, "label": label, "buckets": buckets})
+    factors = out_factors
 
     # 2つの条件の組み合わせで良かったもの(件数が少ないとたまたまが混じるので FACTOR_MIN_N 件以上、前半後半とも全体超え)
-    keys = [f["key"] for f in factors if f["key"] not in ("month", "sector")]
+    keys = [f["key"] for f in factors if f["key"] not in pair_keys_exclude]
     labels = {f["key"]: f["label"] for f in factors}
     pairs = []
     for i, k1 in enumerate(keys):
@@ -442,9 +455,9 @@ def _factor_analysis(rows: list[dict]) -> dict | None:
         picked.append(r)
     pairs = picked
 
-    return {"base": base, "factors": factors, "pairs": pairs[:12],
-            "note": "通常シグナル(底値圏+3ヶ月底打ち)を、シグナル日に分かっていた条件で分けた60営業日後の成績。"
-                    "『安定』=前半(〜2021年)と後半(2022年〜)の両方で全体平均を上回ったもの"}
+    return {"base": base, "factors": factors, "pairs": pairs[:12], "horizon": horizon,
+            "note": note or ("通常シグナル(底値圏+3ヶ月底打ち)を、シグナル日に分かっていた条件で分けた60営業日後の成績。"
+                             "『安定』=前半(〜2021年)と後半(2022年〜)の両方で全体平均を上回ったもの")}
 
 
 def run(closes: dict[str, pd.Series], refs: list[dict] | None = None, sectors: dict[str, str] | None = None) -> dict:

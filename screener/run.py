@@ -25,11 +25,27 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from screener import backtest, data, enrich, signals
+from screener import backtest, data, enrich, events, signals, volume
 from screener.themes import JPX_33_SECTORS, THEME_GENRES, tag_themes
 
 CONFIG = Path(__file__).resolve().parent.parent / "config" / "win_patterns.yaml"
 JST = timezone(timedelta(hours=9))
+
+
+def _clean(o):
+    """JSONに書けないNaN/無限大をNone(null)に置き換える(ブラウザがJSONを読めなくなるのを防ぐ)。"""
+    if isinstance(o, float):
+        return None if (o != o or o in (float("inf"), float("-inf"))) else o
+    if isinstance(o, dict):
+        return {k: _clean(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_clean(v) for v in o]
+    if hasattr(o, "item") and not isinstance(o, (str, bytes)):
+        try:
+            return _clean(o.item())
+        except (ValueError, TypeError):
+            return o
+    return o
 
 
 def _r(x: float | None, nd: int = 3) -> float | None:
@@ -98,7 +114,7 @@ def _cmp_payload(close: pd.Series, tpl: dict) -> dict:
     }
 
 
-def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], list[dict], dict]:
+def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict[str, pd.Series], list[dict], dict]:
     started = time.time()
     universe = data.load_universe()
     if limit:
@@ -109,7 +125,8 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], list[dict], 
     tickers = list(dict.fromkeys(universe["ticker"].tolist() + [t for t in ref_tickers if t] + [backtest.MARKET_TICKER]))
 
     # バックテスト用に10年分取得し、毎日の判定(5年位置など)には直近5年分だけを使う
-    closes_full = data.download_closes(tickers, period="10y")
+    volumes_full: dict[str, pd.Series] = {}
+    closes_full = data.download_closes(tickers, period="10y", volumes=volumes_full)
     closes = {}
     for t, ser in closes_full.items():
         cut = ser.index[-1] - pd.DateOffset(years=5)
@@ -181,6 +198,29 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], list[dict], 
             print(f"[enrich] {i}/{len(candidates)}")
         time.sleep(0.3)
 
+    # 出来高急増(直近3営業日以内)
+    by_t = {x["t"]: x for x in stocks}
+    try:
+        vs = volume.today(closes, volumes_full, [x["t"] for x in stocks if x["st"] != "nodata"])
+        for t, info in vs.items():
+            by_t[t]["vs"] = info
+            if "ch" not in by_t[t]:
+                by_t[t]["ch"] = _charts(closes[t])
+        print(f"[volume] 出来高急増: {len(vs)} 銘柄")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[volume] 失敗: {exc}")
+
+    # イベント(自社株買い・株式分割・上方修正・増配)をニュース見出しから
+    ev = None
+    try:
+        ev = events.collect(universe, closes)
+        for e in ev["recent"]:
+            x = by_t.get(e["t"])
+            if x is not None and "ch" not in x and e["t"] in closes:
+                x["ch"] = _charts(closes[e["t"]])
+    except Exception as exc:  # noqa: BLE001
+        print(f"[events] 失敗: {exc}")
+
     # 今の地合い(日本株全体の指数が200日移動平均より上か下か)。バックテストと同じ指数・同じ判定
     market = None
     try:
@@ -193,7 +233,9 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], list[dict], 
     # STEP7 AI(APIキーがある時だけ)
     enrich.ai_evaluate([c[0] for c in candidates])
 
-    return closes_full, refs, {
+    return closes_full, volumes_full, refs, {
+        "events": {k: v for k, v in ev.items() if k != "history"} if ev else None,
+        "_events_history": ev["history"] if ev else None,
         "generated_at": datetime.now(JST).isoformat(timespec="minutes"),
         "elapsed_min": round((time.time() - started) / 60, 1),
         "universe_count": len(universe),
@@ -221,10 +263,13 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args()
 
-    closes, refs, result = screen(args.limit)
+    closes, volumes, refs, result = screen(args.limit)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "results.json").write_text(json.dumps(result, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    hist = result.pop("_events_history", None)
+    if hist is not None:
+        (out / "events.json").write_text(json.dumps(_clean({"history": hist}), ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    (out / "results.json").write_text(json.dumps(_clean(result), ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     n_pass = sum(1 for s in result["stocks"] if s["st"] == "pass")
     print(f"[done] {len(result['stocks'])} 銘柄 / 候補 {n_pass} / {result['elapsed_min']}分 → {out / 'results.json'}")
 
@@ -233,8 +278,14 @@ def main() -> None:
         t0 = time.time()
         sectors = {x["t"]: x["s"] for x in result["stocks"]}
         bt = backtest.run(closes, refs, sectors)
-        (out / "backtest.json").write_text(json.dumps(bt, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-        md = backtest.summary_markdown(bt)
+        try:
+            t1 = time.time()
+            bt["volume"] = volume.run_backtest(closes, volumes, sectors)
+            print(f"[volume] バックテスト {bt['volume']['events'] if bt['volume'] else 0} 回 / {round(time.time() - t1)}秒")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[volume] バックテスト失敗: {exc}")
+        (out / "backtest.json").write_text(json.dumps(_clean(bt), ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        md = backtest.summary_markdown(bt) + volume.summary_markdown(bt.get("volume"))
         print(md)
         summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
         if summary_path:
