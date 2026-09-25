@@ -84,11 +84,16 @@ def _match(title: str, codes: dict[str, str], names: list[tuple[str, str]]) -> s
         t = codes.get(m.group(1))
         if t:
             return t
+    # 見出しの主語は先頭に来ることが多いので「一番前に出てくる銘柄名」を採用(同じ位置なら長い方)
     nt = _norm(title)
-    best, best_len = None, 0
+    best, best_key = None, None
     for variant, t in names:
-        if len(variant) > best_len and variant in nt:
-            best, best_len = t, len(variant)
+        i = nt.find(variant)
+        if i < 0:
+            continue
+        key = (i, -len(variant))
+        if best_key is None or key < best_key:
+            best, best_key = t, key
     return best
 
 

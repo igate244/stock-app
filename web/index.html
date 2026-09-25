@@ -652,6 +652,12 @@ function buildVolMode() {
   getBacktest().then((bt) => {
     const vb = bt?.volume;
     if (!vb) { kpi.replaceChildren(el("div", { class: "sub", style: "grid-column:1/-1", text: "過去の成績は次回の自動計算で表示されます。" })); return; }
+    const h20 = vb.hold.find((h) => h.days === 20);
+    if (h20 && h20.mean != null && h20.base_mean != null) {
+      kpi.after(el("p", { class: "sub", style: "margin:10px 0 0", text: h20.mean > h20.base_mean
+        ? `過去10年では、急増の翌日に買うと20日後の平均が適当買いより ${fmtP(h20.mean - h20.base_mean)} 良かった。`
+        : `注意: 過去10年では、急増の翌日に飛び乗ると20日後の平均が適当買いより ${fmtP(h20.mean - h20.base_mean)} 悪かった(勝率${fmtW(h20.win)})。急増は「注目するきっかけ」として使い、下の効き目分析で条件を絞るのがおすすめ。` }));
+    }
     kpi.replaceChildren(...vb.hold.filter((h) => [5, 20, 60].includes(h.days)).map((h) =>
       el("div", { class: "kpi" }, el("div", { class: "l", text: `${h.days}日後の平均` }),
         el("div", { class: `v${(h.mean ?? 0) > (h.base_mean ?? 0) ? " pos" : ""}`, text: fmtP(h.mean) }),
