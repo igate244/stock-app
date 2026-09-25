@@ -1216,6 +1216,7 @@ function row(s, rank) {
     if (k !== "pos") facts.push(`5年位置 ${pct(s.pos)}`);
     facts.push(`3ヶ月 ${s.dec != null ? "-" + Math.round(s.dec * 100) + "%" : "-"}→底から${pct(s.reb, true)}`);
     if (s.earn) facts.push(`業績 ${s.earn.trend}`);
+    if (s.dv?.y) facts.push(`配当 ${fmtY(s.dv.y)}`);
     if (s.sim_ref && s.st === "pass") facts.push(`${s.sim_ref}似`);
     if (s.sim_ref && s.st === "nobottom" && (s.sim ?? 0) >= 0.85) facts.push(`${s.sim_ref}の上昇前に似てる`);
     if (k !== "sim" && k !== "best" && s.sim != null && s.st === "nobottom") facts.push(`類似度 ${s.sim.toFixed(2)}`);
@@ -1292,6 +1293,8 @@ function openDetail(s, ctx = null) {
   }
 
   if (s.dv) panel.append(divSection(s));
+  else if (s.st !== "nodata") panel.append(el("div", { class: "section" }, el("h4", { text: "配当" }),
+    el("div", { class: "box sub", text: "配当なし(直近1年以上、配当の記録がない)。成長重視で配当を出していない会社か、データが取れていない可能性がある。" })));
   if (s.st === "pass" && s.px != null && !ctx) panel.append(planSection(s));
   if (ctx === "vol" && s.vs) panel.append(volPlan(s));
 
