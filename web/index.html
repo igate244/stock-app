@@ -249,7 +249,11 @@ ul.list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10
 .item .code { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .metric { grid-row: 1 / span 2; grid-column: 2; text-align: right; }
 .item .metric b { display: block; font-size: 22px; font-weight: 800; line-height: 1.1; letter-spacing: -0.01em; }
-.item .metric small { color: var(--muted); font-size: 11px; }
+.item .metric small { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.item .metric.key b { color: var(--accent-ink); }
+.item .metric.key small { color: var(--accent-ink); font-weight: 700; }
+.rank-no { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px; margin-right: 8px; border-radius: 7px;
+  background: var(--accent-wash); color: var(--accent-ink); font-size: 12px; font-weight: 800; vertical-align: 2px; }
 .item .facts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; color: var(--ink2); margin-top: 8px; }
 .item .facts span { background: var(--wash); border-radius: 8px; padding: 2px 8px; }
 .item .facts span.star { background: var(--accent-wash); color: var(--accent-ink); font-weight: 700; }
@@ -706,21 +710,27 @@ function renderVol(pool = selected()) {
   $("#vol-note").textContent = state.themes.size + state.sectors.size ? "絞り込み中" : "全銘柄から";
   ul.replaceChildren();
   if (!list.length) ul.append(el("li", { class: "empty", text: "該当なし" }));
-  for (const s of list.slice(0, 200)) {
+  const VOL_METRIC = {
+    ratio: (v) => [`×${v.r}`, "出来高倍率 ▼"], d: (v) => [fmtP(v.d), "当日の上昇 ▼"], to: (v) => [oku(v.to), "売買代金 ▼"],
+    pos: (v) => [pct(v.pos), "5年位置 ▲"], new: (v) => [v.age === 0 ? "今日" : `${v.age}日前`, "新しい順"],
+  };
+  list.slice(0, 200).forEach((s, i) => {
     const v = s.vs;
+    const [mv, ml] = (VOL_METRIC[k] || VOL_METRIC.ratio)(v);
     const facts = [
-      { t: `当日 ${fmtP(v.d)}` },
-      { t: `売買代金 ${oku(v.to)}/日` },
+      k !== "d" ? { t: `当日 ${fmtP(v.d)}` } : null,
+      k !== "to" ? { t: `売買代金 ${oku(v.to)}/日` } : null,
       v.hi ? { t: "52週高値更新", star: true } : null,
       v.pos != null && v.pos <= 0.3 ? { t: "底値圏から", star: true } : null,
       { t: v.age === 0 ? "今日" : `${v.age}営業日前 → その後${fmtP(v.since)}` },
     ].filter(Boolean);
+    if (k !== "ratio") facts.unshift({ t: `出来高×${v.r}` });
     ul.append(el("li", {}, el("button", { class: "item", onclick: () => openDetail(s, "vol") },
-      el("span", { class: "name", text: s.n }),
-      el("span", { class: "metric" }, el("b", { text: `×${v.r}` }), el("small", { text: "出来高" })),
+      el("span", { class: "name" }, el("span", { class: "rank-no", text: String(i + 1) }), s.n),
+      el("span", { class: "metric key" }, el("b", { text: mv }), el("small", { text: ml })),
       el("span", { class: "code", text: `${code(s.t)} ・ ${s.s}` }),
       el("span", { class: "facts" }, ...facts.map((f) => el("span", { class: f.star ? "star" : null, text: f.t }))))));
-  }
+  });
 }
 
 function volWhy(s) {
@@ -1028,7 +1038,8 @@ function renderList(pool = selected()) {
   if (!list.length) {
     ul.append(el("li", { class: "empty", text: q ? "検索に一致する銘柄なし" : state.tab === "pass" ? "今日は候補なし。テーマを増やすか、全銘柄で見てみて。" : "該当なし" }));
   }
-  for (const s of list.slice(0, state.shown)) ul.append(el("li", {}, row(s)));
+  const ranked = state.sort !== "name";
+  list.slice(0, state.shown).forEach((s, i) => ul.append(el("li", {}, row(s, ranked ? i + 1 : 0))));
   const slot = $("#more-slot");
   slot.replaceChildren();
   if (list.length > state.shown) {
@@ -1041,27 +1052,40 @@ function renderList(pool = selected()) {
 const BEST_SIM = 0.9;
 function isBest(s) { return s.st === "pass" && (s.sim ?? 0) >= BEST_SIM ? 1 : 0; }
 
-function row(s) {
-  let metric;
-  if (s.st === "pass") {
-    metric = s.ai ? el("span", { class: "metric" }, el("b", { text: s.ai.score.toFixed(2) }), el("small", { text: "AIスコア" }))
-      : el("span", { class: "metric" }, el("b", { text: (s.sim ?? 0).toFixed(2) }), el("small", { text: "類似度" }));
-  } else if (s.st === "nodata") {
-    metric = el("span", { class: "metric" }, el("b", { text: "-" }));
+// 並び順に使っている値を、右側の大きい数字として表示する(並び順が一目でわかるように)
+const SORT_METRIC = {
+  sim: (s) => [s.sim != null ? s.sim.toFixed(2) : "-", "類似度 ▼"],
+  pos: (s) => [pct(s.pos), "5年位置 ▲"],
+  reb: (s) => [pct(s.reb, true), "底からの反発 ▼"],
+};
+
+function row(s, rank) {
+  let val, label, key = false;
+  const k = state.sort;
+  if (s.st === "nodata") {
+    val = "-"; label = "";
+  } else if (SORT_METRIC[k]) {
+    [val, label] = SORT_METRIC[k](s); key = true;
+  } else if (k === "best" && s.st === "pass") {
+    [val, label] = s.ai ? [s.ai.score.toFixed(2), "AIスコア ▼"] : [(s.sim ?? 0).toFixed(2), "類似度 ▼"]; key = true;
+  } else if (s.st === "pass") {
+    [val, label] = [(s.sim ?? 0).toFixed(2), "類似度"];
   } else {
-    metric = el("span", { class: "metric" }, el("b", { text: pct(s.pos) }), el("small", { text: "5年位置" }));
+    [val, label] = [pct(s.pos), "5年位置"];
   }
+  const metric = el("span", { class: key ? "metric key" : "metric" }, el("b", { text: val }), label ? el("small", { text: label }) : null);
   const facts = [];
   if (isBest(s)) facts.push({ star: true, t: "★ ベスト条件" });
   if (s.st !== "nodata") {
-    if (s.st === "pass") facts.push(`5年位置 ${pct(s.pos)}`);
+    if (k !== "pos") facts.push(`5年位置 ${pct(s.pos)}`);
     facts.push(`3ヶ月 ${s.dec != null ? "-" + Math.round(s.dec * 100) + "%" : "-"}→底から${pct(s.reb, true)}`);
     if (s.earn) facts.push(`業績 ${s.earn.trend}`);
     if (s.sim_ref && s.st === "pass") facts.push(`${s.sim_ref}似`);
-    if (s.sim_ref && s.st === "nobottom" && (s.sim ?? 0) >= 0.85) facts.push(`${s.sim_ref}の上昇前に似てる ${s.sim.toFixed(2)}`);
+    if (s.sim_ref && s.st === "nobottom" && (s.sim ?? 0) >= 0.85) facts.push(`${s.sim_ref}の上昇前に似てる`);
+    if (k !== "sim" && k !== "best" && s.sim != null && s.st === "nobottom") facts.push(`類似度 ${s.sim.toFixed(2)}`);
   }
   return el("button", { class: isBest(s) ? "item best" : "item", onclick: () => openDetail(s) },
-    el("span", { class: "name", text: s.n }),
+    el("span", { class: "name" }, rank ? el("span", { class: "rank-no", text: String(rank) }) : null, s.n),
     metric,
     el("span", { class: "code", text: `${code(s.t)} ・ ${s.s}` }),
     facts.length ? el("span", { class: "facts" }, ...facts.map((f) => (typeof f === "string" ? el("span", { text: f }) : el("span", { class: "star", text: f.t })))) : null);
