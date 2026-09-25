@@ -25,7 +25,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from screener import backtest, data, enrich, events, signals, volume
+from screener import backtest, data, dividend, enrich, events, signals, volume
 from screener.themes import JPX_33_SECTORS, THEME_GENRES, tag_themes
 
 CONFIG = Path(__file__).resolve().parent.parent / "config" / "win_patterns.yaml"
@@ -114,7 +114,7 @@ def _cmp_payload(close: pd.Series, tpl: dict) -> dict:
     }
 
 
-def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict[str, pd.Series], list[dict], dict]:
+def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict[str, pd.Series], list[dict], dict, dict]:
     started = time.time()
     universe = data.load_universe()
     if limit:
@@ -126,7 +126,9 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict[str, pd
 
     # バックテスト用に10年分取得し、毎日の判定(5年位置など)には直近5年分だけを使う
     volumes_full: dict[str, pd.Series] = {}
-    closes_full = data.download_closes(tickers, period="10y", volumes=volumes_full)
+    extras: dict = {"raw": {}, "div": {}}  # 配当調整なしの終値・配当履歴
+    closes_full = data.download_closes(tickers, period="10y", volumes=volumes_full, extras=extras)
+    print(f"[dividend] 配当履歴あり {len(extras['div'])} 銘柄")
     closes = {}
     for t, ser in closes_full.items():
         cut = ser.index[-1] - pd.DateOffset(years=5)
@@ -198,6 +200,22 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict[str, pd
             print(f"[enrich] {i}/{len(candidates)}")
         time.sleep(0.3)
 
+    # 配当(利回り・配当月・次の権利付最終日)
+    today = datetime.now(JST).date()
+    n_dv = 0
+    for x in stocks:
+        if x["st"] == "nodata":
+            continue
+        try:
+            dv = dividend.info(extras["raw"].get(x["t"]), extras["div"].get(x["t"]), today)
+        except Exception:  # noqa: BLE001
+            dv = None
+        if dv:
+            dv["hist"] = dv["hist"][-4:]
+            x["dv"] = dv
+            n_dv += 1
+    print(f"[dividend] 配当情報 {n_dv} 銘柄")
+
     # 出来高急増(直近3営業日以内)
     by_t = {x["t"]: x for x in stocks}
     try:
@@ -233,7 +251,7 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict[str, pd
     # STEP7 AI(APIキーがある時だけ)
     enrich.ai_evaluate([c[0] for c in candidates])
 
-    return closes_full, volumes_full, refs, {
+    return closes_full, volumes_full, refs, extras, {
         "events": {k: v for k, v in ev.items() if k != "history"} if ev else None,
         "_events_history": ev["history"] if ev else None,
         "generated_at": datetime.now(JST).isoformat(timespec="minutes"),
@@ -263,7 +281,7 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args()
 
-    closes, volumes, refs, result = screen(args.limit)
+    closes, volumes, refs, extras, result = screen(args.limit)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     hist = result.pop("_events_history", None)
@@ -297,8 +315,14 @@ def main() -> None:
             print(f"[volume] バックテスト {bt['volume']['events'] if bt['volume'] else 0} 回 / {round(time.time() - t1)}秒")
         except Exception as exc:  # noqa: BLE001
             print(f"[volume] バックテスト失敗: {exc}")
+        try:
+            t1 = time.time()
+            bt["dividend"] = dividend.run_backtest(extras["raw"], extras["div"])
+            print(f"[dividend] バックテスト {bt['dividend']['events'] if bt['dividend'] else 0} 回 / {round(time.time() - t1)}秒")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[dividend] バックテスト失敗: {exc}")
         (out / "backtest.json").write_text(json.dumps(_clean(bt), ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-        md = backtest.summary_markdown(bt) + volume.summary_markdown(bt.get("volume"))
+        md = backtest.summary_markdown(bt) + volume.summary_markdown(bt.get("volume")) + dividend.summary_markdown(bt.get("dividend"))
         print(md)
         summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
         if summary_path:

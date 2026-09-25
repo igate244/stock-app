@@ -121,7 +121,7 @@ main.wrap > * { min-width: 0; }
 
 /* ---- 見方の切り替え ---- */
 .modes { display: flex; gap: 4px; background: var(--wash); border-radius: 14px; padding: 4px; margin-bottom: 10px; }
-.modes button { flex: 1; min-height: 36px; border: 0; border-radius: 10px; background: none; font-size: 14px; font-weight: 600; color: var(--ink2); }
+.modes button { flex: 1; min-height: 36px; border: 0; border-radius: 10px; background: none; font-size: 13.5px; padding: 0 4px; white-space: nowrap; font-weight: 600; color: var(--ink2); }
 .modes button[aria-pressed="true"] { background: var(--raised); color: var(--ink); font-weight: 800; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
 .app-bar > .wrap:first-child { padding-bottom: 8px; }
 .app-bar > .wrap + .wrap { padding-block: 0; display: block; }
@@ -389,7 +389,7 @@ details.bt[open] summary::after { content: "－"; }
     <button class="icon-btn" aria-label="再読み込み" onclick="location.reload()" style="order:3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
   </div>
   <div class="wrap"><nav class="modes" id="modes" aria-label="買い時の見方">
-    <button data-m="bottom">底打ち</button><button data-m="vol">出来高急増</button><button data-m="ev">イベント</button>
+    <button data-m="bottom">底打ち</button><button data-m="vol">出来高急増</button><button data-m="ev">イベント</button><button data-m="div">配当</button>
   </nav></div>
 </header>
 
@@ -433,6 +433,8 @@ const state = {
   sort: "best",
   mode: "bottom",
   volSort: "ratio",
+  divSort: "y",
+  divDate: "all",
   evType: "all",
   q: "",
   shown: PAGE,
@@ -522,7 +524,8 @@ function start(data, demo) {
   state.sectors = new Set(recall("sectors", []).filter((s) => (data.sectors || []).includes(s)));
   state.tab = recall("tab", "pass");
   state.sort = recall("sort", "best");
-  state.mode = ["bottom", "vol", "ev"].includes(recall("mode", "bottom")) ? recall("mode", "bottom") : "bottom";
+  state.mode = ["bottom", "vol", "ev", "div"].includes(recall("mode", "bottom")) ? recall("mode", "bottom") : "bottom";
+  state.divSort = recall("divSort", "y");
   state.volSort = recall("volSort", "ratio");
   renderShell();
   syncHeaderHeight();
@@ -617,6 +620,9 @@ function renderShell() {
   /* ===== イベントモード ===== */
   main.append(buildEvMode());
 
+  /* ===== 配当モード ===== */
+  main.append(buildDivMode());
+
   /* フッター */
   const p = d.params || {};
   const au = actionsUrl();
@@ -635,6 +641,7 @@ function renderShell() {
         el("li", { text: "地合い: 日本株全体(全銘柄の平均)の指数が200日移動平均より上なら上向き、下なら下向き" }),
         el("li", { text: "業績・ニュースは候補に残った銘柄だけ取得(業績はyfinance、ニュースはGoogleニュース)" }),
         el("li", { text: "出来高急増: 直近3営業日に、出来高が20日平均の3倍以上 & 株価+3%以上 & 平均売買代金3千万円以上" }),
+        el("li", { text: "配当: Yahoo Financeの配当履歴から、直近1年の配当÷株価を利回りとして計算。次の権利付最終日は、過去の配当月の月末を権利確定日として推定(月末以外の会社もあるので正確な日付は会社の発表で確認)" }),
         el("li", { text: "イベント: Googleニュースの見出しから自社株買い・株式分割・上方修正・増配を自動検出(取りこぼし・誤判定あり)" }))),
     el("div", { class: "muted", text: "株価: Yahoo Finance(yfinance)/銘柄一覧: JPX。投資助言ではなく、自分で判断するための参考情報。" })));
 
@@ -738,6 +745,134 @@ function volWhy(s) {
   return `${v.age === 0 ? "今日" : `${v.age}営業日前(${v.date.slice(5).replace("-", "/")})`}、出来高が普段の${v.r}倍に急増して株価が${fmtP(v.d)}。` +
     `${v.hi ? "52週高値を更新した。" : ""}${v.pos != null && v.pos <= 0.3 ? "まだ5年の底値圏にいる。" : v.pos != null && v.pos >= 0.7 ? "5年の高値圏にいる。" : ""}` +
     `${v.pre != null ? `急増前の20日は${fmtP(v.pre)}。` : ""}${v.age > 0 ? `急増した日から今日まで${fmtP(v.since)}。` : ""}`;
+}
+
+/* ---------- 配当モード ---------- */
+const WD = "日月火水木金土";
+const mdw = (iso) => { if (!iso) return "-"; const d = new Date(iso + "T00:00:00"); return `${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})`; };
+
+function buildDivMode() {
+  const sec = el("div", { class: "mode", "data-mode": "div" });
+  const kpi = el("div", { class: "kpis", id: "div-kpi" });
+  sec.append(el("section", { class: "card" },
+    el("div", { class: "row-head" }, el("h2", { text: "配当" }), el("span", { class: "selection-line", id: "div-count" })),
+    el("p", { class: "sub", style: "margin:6px 0 0", text: "「権利付最終日」の大引けに株を持っていれば、次の配当がもらえる。翌営業日(権利落ち日)に売っても配当はもらえる。下の日付は過去の配当月から推定した目安。" }),
+    el("div", { class: "typechips", id: "div-dates" }),
+    kpi));
+  getBacktest().then((bt) => {
+    const db = bt?.dividend;
+    if (!db) { kpi.replaceChildren(el("div", { class: "sub", style: "grid-column:1/-1", text: "配当前後の値動きの統計は次回の自動計算で表示されます。" })); return; }
+    const p20 = db.pre.find((r) => r.days === 20);
+    const p20b = db.post.find((r) => r.days === 20);
+    kpi.replaceChildren(
+      el("div", { class: "kpi" }, el("div", { class: "l", text: "20日前買い→最終日売り" }), el("div", { class: `v${(p20?.kenri.mean ?? 0) > (p20?.base.mean ?? 0) ? " pos" : ""}`, text: fmtP(p20?.kenri.mean) }),
+        el("div", { class: "h", text: `勝率${fmtW(p20?.kenri.win)}\n適当買い${fmtP(p20?.base.mean)}` })),
+      el("div", { class: "kpi" }, el("div", { class: "l", text: "20日前買い→落ち日売り" }), el("div", { class: `v${(p20?.haito.mean ?? 0) > (p20?.base.mean ?? 0) ? " pos" : ""}`, text: fmtP(p20?.haito.mean) }),
+        el("div", { class: "h", text: `勝率${fmtW(p20?.haito.win)}\n配当込み・税引前` })),
+      el("div", { class: "kpi" }, el("div", { class: "l", text: "落ち日買い→20日後" }), el("div", { class: "v", text: fmtP(p20b?.mean) }),
+        el("div", { class: "h", text: `勝率${fmtW(p20b?.win)}\n落ち日は平均${fmtP(db.drop?.mean)}` })));
+  });
+  const sort = el("select", { "aria-label": "並び順", id: "div-sort" },
+    ...[["y", "利回りが高い順"], ["cum", "権利付最終日が近い順"], ["pos", "株価位置が低い順"]].map(([v, l]) => el("option", { value: v, text: l })));
+  sort.value = state.divSort;
+  sort.addEventListener("change", () => { state.divSort = sort.value; store("divSort", sort.value); renderDiv(); });
+  sec.append(el("section", { "aria-label": "配当の銘柄" }, el("div", { class: "tools" }, el("span", { class: "fhint", style: "flex:1;align-self:center", id: "div-note" }), sort),
+    el("ul", { class: "list", id: "div-list" }), el("div", { id: "div-more" })));
+
+  const box = el("div", { class: "sub", text: "読み込み中…" });
+  const det = el("details", { class: "bt" }, el("summary", {}, el("div", {}, el("h2", { text: "配当前後の値動き(過去10年)" }),
+    el("div", { class: "sub", style: "margin-top:2px", text: "いつ買って、いつ売ると良かったか" }))), box);
+  det.addEventListener("toggle", () => { if (det.open && !det.dataset.loaded) { det.dataset.loaded = "1"; loadDivAnalysis(box); } });
+  sec.append(el("section", { class: "card" }, det));
+  return sec;
+}
+
+async function loadDivAnalysis(box) {
+  if (state.demo) { box.textContent = "デモでは表示されません(本番の計算結果にだけ付きます)。"; return; }
+  const db = (await getBacktest())?.dividend;
+  if (!db) { box.textContent = "まだ分析結果がありません(次回の自動計算で作られます)。"; return; }
+  const table = (head, rows, bestIdx) => el("div", { class: "tbl-wrap" }, el("table", { class: "tbl" },
+    el("thead", {}, el("tr", {}, ...head.map((h) => el("th", { text: h })))),
+    el("tbody", {}, ...rows.map((r, i) => el("tr", { class: i === bestIdx ? "best" : null }, ...r.map((c) => el("td", { text: c })))))));
+  const c2 = (x) => (x && x.n >= 20 ? `${fmtP(x.mean)}\n${fmtW(x.win)}` : "-");
+  const bestPre = db.pre.reduce((bi, r, i) => ((r.haito.mean ?? -9) > (db.pre[bi].haito.mean ?? -9) ? i : bi), 0);
+  box.className = "";
+  box.replaceChildren(
+    el("p", { class: "sub", text: `過去10年の権利落ち ${db.events.toLocaleString()}回で集計。上段=平均、下段=勝率。` }),
+    el("h5", { text: "権利付最終日の何日前に買うと良かったか" }),
+    table(["買う日", "最終日に売る", "落ち日に売る(配当込み)", "適当な日"], db.pre.map((r) => [`${r.days}営業日前`, c2(r.kenri), c2(r.haito), c2(r.base)]), bestPre),
+    el("p", { class: "muted", style: "font-size:12px;margin:4px 0 0", text: `「最終日に売る」=配当はもらわず、配当目当ての買いで上がった分だけ取る。「落ち日に売る」=配当をもらって翌日に売る(税金約20%は引いてない)。権利落ち日は平均${fmtP(db.drop?.mean)}下がり、下がる幅は配当額のだいたい${db.drop?.ratio_med ?? "-"}倍。` }),
+    el("h5", { text: "権利落ち日に買って持つと" }),
+    table(["保有", "平均", "勝率"], db.post.map((r) => [`${r.days}営業日`, fmtP(r.mean), fmtW(r.win)])),
+    el("h5", { text: "利回り別(20営業日)" }),
+    table(["年利回り", "最終日に売る", "落ち日に売る", "落ち後20日"], db.by_yield.map((r) => [r.label, c2(r.pre20), c2(r.cap20), c2(r.post20)])),
+    el("h5", { text: "権利付最終日の月別(20日前に買い→最終日に売る)" }),
+    table(["月", "件数", "平均", "勝率"], db.by_month.map((r) => [`${r.month}月`, (r.n || 0).toLocaleString(), fmtP(r.mean), fmtW(r.win)])),
+    el("ul", { class: "cav" }, ...(db.notes || []).map((c) => el("li", { text: c }))));
+}
+
+function renderDiv(pool = selected()) {
+  const ul = $("#div-list");
+  if (!ul) return;
+  const all = pool.filter((s) => s.dv && s.dv.y);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const limit = new Date(today.getTime() + 60 * 864e5);
+  const upcoming = all.filter((s) => s.dv.cum && new Date(s.dv.cum + "T00:00:00") <= limit);
+  const dates = {};
+  for (const s of upcoming) dates[s.dv.cum] = (dates[s.dv.cum] || 0) + 1;
+  const dateKeys = Object.keys(dates).sort();
+  if (state.divDate !== "all" && !dates[state.divDate]) state.divDate = dateKeys[0] || "all";
+  $("#div-dates").replaceChildren(
+    ...dateKeys.map((d) => el("button", { class: "chip", "aria-pressed": String(state.divDate === d), onclick: () => { state.divDate = d; renderDiv(); } },
+      `${mdw(d)}が最終日`, el("span", { class: "n", text: String(dates[d]) }))),
+    el("button", { class: "chip", "aria-pressed": String(state.divDate === "all"), onclick: () => { state.divDate = "all"; renderDiv(); } },
+      "配当のある全銘柄", el("span", { class: "n", text: String(all.length) })));
+  let list = state.divDate === "all" ? all : upcoming.filter((s) => s.dv.cum === state.divDate);
+  const k = state.divSort;
+  const key = { y: (s) => -s.dv.y, cum: (s) => (s.dv.cum || "9999") + String(1 - s.dv.y).slice(0, 6), pos: (s) => s.pos ?? 9 }[k] || ((s) => -s.dv.y);
+  list = list.slice().sort((a, b) => { const x = key(a), y = key(b); return x < y ? -1 : x > y ? 1 : 0; });
+  $("#div-count").textContent = `${list.length}銘柄`;
+  $("#div-note").textContent = state.divDate === "all" ? "配当のある全銘柄" : `${mdw(state.divDate)}が権利付最終日`;
+  const METRIC = { y: (s) => [fmtY(s.dv.y), "配当利回り ▼"], cum: (s) => [mdw(s.dv.cum), "権利付最終日 ▲"], pos: (s) => [pct(s.pos), "5年位置 ▲"] };
+  ul.replaceChildren();
+  if (!list.length) ul.append(el("li", { class: "empty", text: state.data.stocks.some((x) => x.dv) ? "該当なし" : "配当のデータは次回の自動計算から表示されます。" }));
+  const shown = state.divShown || PAGE;
+  list.slice(0, shown).forEach((s, i) => {
+    const d = s.dv;
+    const [mv, ml] = (METRIC[k] || METRIC.y)(s);
+    const facts = [
+      k !== "y" ? { t: `利回り ${fmtY(d.y)}` } : null,
+      k !== "cum" && d.cum ? { t: `権利付最終日 ${mdw(d.cum)}`, star: state.divDate === "all" && new Date(d.cum + "T00:00:00") <= new Date(today.getTime() + 14 * 864e5) } : null,
+      { t: `年${d.m.length}回(${d.m.map((m) => m + "月").join("・")})` },
+      { t: `1株 ${d.ttm}円/年` },
+      d.tr ? { t: d.tr, star: d.tr === "増配傾向" } : null,
+      k !== "pos" && s.pos != null ? { t: `5年位置 ${pct(s.pos)}` } : null,
+      s.st === "pass" ? { t: "底打ち候補", star: true } : null,
+    ].filter(Boolean);
+    ul.append(el("li", {}, el("button", { class: "item", onclick: () => openDetail(s, "div") },
+      el("span", { class: "name" }, el("span", { class: "rank-no", text: String(i + 1) }), s.n),
+      el("span", { class: "metric key" }, el("b", { text: mv }), el("small", { text: ml })),
+      el("span", { class: "code", text: `${code(s.t)} ・ ${s.s}` }),
+      el("span", { class: "facts" }, ...facts.map((f) => el("span", { class: f.star ? "star" : null, text: f.t }))))));
+  });
+  const more = $("#div-more");
+  more.replaceChildren();
+  if (list.length > shown) more.append(el("button", { class: "more", onclick: () => { state.divShown = shown + PAGE; renderDiv(); } }, `もっと見る(残り${(list.length - shown).toLocaleString()}件)`));
+}
+const fmtY = (v) => (v == null ? "-" : `${(v * 100).toFixed(2)}%`);
+
+function divSection(s) {
+  const d = s.dv;
+  const hist = (d.hist || []).slice().reverse().map(([dt, a]) => `${dt.replace(/-/g, "/")} 権利落ち ${a}円`).join("\n");
+  return el("div", { class: "section" }, el("h4", { text: "配当" }),
+    el("div", { class: "stats" },
+      stat("配当利回り", fmtY(d.y), "直近1年の実績÷株価"),
+      stat("1株配当(年)", `${d.ttm}円`, d.tr || `前回 ${d.amt}円`),
+      stat("配当の月", d.m.map((m) => m + "月").join("・"), `年${d.m.length}回`),
+      stat("次の権利付最終日", mdw(d.cum), d.ex ? `権利落ち日 ${mdw(d.ex)}(推定)` : "推定できず")),
+    el("div", { class: "why", style: "font-size:13px", text: d.cum
+      ? `${mdw(d.cum)}の大引けまでに買って持っていれば、次の配当(前回は1株${d.amt}円)がもらえる見込み。${mdw(d.ex)}の権利落ち日に売っても配当はもらえる。100株なら前回と同額で約${Math.round(d.amt * 100).toLocaleString()}円(税引前)。\n※月末を権利確定日として推定した日付。正確な日付は会社の発表で確認してね。\n\n最近の配当:\n${hist}`
+      : `最近の配当:\n${hist}` }));
 }
 
 /* ---------- イベントモード ---------- */
@@ -982,6 +1117,7 @@ function render() {
   renderList(pool);
   renderVol(pool);
   renderEv(pool);
+  renderDiv(pool);
 }
 
 function setTab(st, scroll) {
@@ -1124,13 +1260,14 @@ function openDetail(s, ctx = null) {
   panel.append(el("div", { class: "sheet-top" }, el("span", { class: "grab", "aria-hidden": "true" }),
     ctx === "vol" ? el("span", { class: "pill pass", text: "出来高急増" })
       : ctx === "ev" ? el("span", { class: "pill pass", text: "イベント" })
+        : ctx === "div" ? el("span", { class: "pill pass", text: "配当" })
         : el("span", { class: s.st === "pass" ? "pill pass" : "pill", text: STATUS[s.st].label }), closeBtn));
 
   panel.append(el("div", { class: "d-head" },
     el("h3", { id: "d-title", text: s.n }),
     el("div", { class: "code", text: `${code(s.t)} ・ ${s.s}${(s.th || []).length ? " ・ " + s.th.join("・") : ""}` }),
     s.px != null ? el("div", { class: "price" }, el("b", { text: `${yen(s.px)}円` }), el("span", { class: "sub", text: "最新終値" })) : null),
-    el("div", { class: "why", text: ctx === "vol" && s.vs ? volWhy(s) : ctx === "ev" ? evWhy(s) : whyText(s) }));
+    el("div", { class: "why", text: ctx === "vol" && s.vs ? volWhy(s) : ctx === "ev" ? evWhy(s) : ctx === "div" && s.dv ? divWhy(s) : whyText(s) }));
   if (ctx) panel.append(el("div", { class: "why", style: "margin-top:8px;font-size:13px", text: `底打ちの見方では: ${whyText(s)}` }));
 
   if (s.ch) panel.append(chartSection(s));
@@ -1154,6 +1291,7 @@ function openDetail(s, ctx = null) {
     panel.append(el("div", { class: "section" }, el("h4", { text: "数字" }), stats));
   }
 
+  if (s.dv) panel.append(divSection(s));
   if (s.st === "pass" && s.px != null && !ctx) panel.append(planSection(s));
   if (ctx === "vol" && s.vs) panel.append(volPlan(s));
 
@@ -1224,6 +1362,11 @@ async function loadChart(s) {
   } catch (_) { return false; }
 }
 
+function divWhy(s) {
+  const d = s.dv;
+  return `配当利回り${fmtY(d.y)}(直近1年で1株${d.ttm}円)。配当は年${d.m.length}回(${d.m.map((m) => m + "月").join("・")})。${d.cum ? `次の権利付最終日は${mdw(d.cum)}(推定)。` : ""}${d.tr ? d.tr + "。" : ""}`;
+}
+
 function evWhy(s) {
   const ev = state.data.events;
   const mine = (ev?.recent || []).filter((e) => e.t === s.t);
@@ -1277,7 +1420,7 @@ function buildPrompt(s) {
 最新終値: ${yen(s.px)}円
 5年株価位置: ${pct(s.pos)}(0%=5年最安値)
 直近3ヶ月: ${s.dec != null ? Math.round(s.dec * 100) : "-"}%下落 → 底から${pct(s.reb, true)}反発(底から${s.dsl}営業日)
-${s.sim != null ? `勝ちパターン類似度(直近60日の形と、勝ちパターン銘柄が大きく上がる前の形の相関): ${s.sim.toFixed(2)}(一番近い: ${s.sim_ref || "-"})\n` : ""}業績: ${earnTxt}
+${s.sim != null ? `勝ちパターン類似度(直近60日の形と、勝ちパターン銘柄が大きく上がる前の形の相関): ${s.sim.toFixed(2)}(一番近い: ${s.sim_ref || "-"})\n` : ""}${s.dv ? `配当: 利回り${fmtY(s.dv.y)}(年${s.dv.ttm}円・${s.dv.m.map((m) => m + "月").join("・")})\n` : ""}業績: ${earnTxt}
 直近ニュース:
 ${news}`;
 }

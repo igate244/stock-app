@@ -37,39 +37,61 @@ def load_universe() -> pd.DataFrame:
     return universe.dropna(subset=["ticker", "name"]).drop_duplicates("ticker").reset_index(drop=True)
 
 
-def _extract_closes(raw: pd.DataFrame, tickers: list[str], volumes: dict | None = None) -> dict[str, pd.Series]:
+def _field(raw: pd.DataFrame, name: str, tickers: list[str]) -> pd.DataFrame | None:
+    """yf.downloadの戻り値から1項目(Close/Adj Close/Volume/Dividends…)を「列=銘柄」の表で取り出す(列の持ち方がバージョンで揺れる)。"""
+    if isinstance(raw.columns, pd.MultiIndex):
+        lv0, lv1 = raw.columns.get_level_values(0), raw.columns.get_level_values(1)
+        if name in lv0:
+            return raw[name]
+        if name in lv1:
+            return raw.xs(name, axis=1, level=1)
+        return None
+    if name in raw.columns:  # 単一銘柄・フラット列
+        return raw[[name]].rename(columns={name: tickers[0]})
+    return None
+
+
+def _extract_closes(raw: pd.DataFrame, tickers: list[str], volumes: dict | None = None,
+                    extras: dict | None = None) -> dict[str, pd.Series]:
     """
-    yf.downloadの戻り値(列の持ち方がバージョンで揺れる)から、銘柄ごとの終値Seriesを取り出す。
-    volumes(dict)を渡すと、出来高も終値と同じ日付にそろえて入れる。
+    銘柄ごとの終値Series(配当・分割調整済み)を取り出す。
+    volumes(dict)を渡すと出来高を、extras={"raw": {}, "div": {}} を渡すと
+    配当調整なしの終値(raw)と配当の履歴(div: 権利落ち日→1株配当)も、終値と同じ日付にそろえて入れる。
     """
     out: dict[str, pd.Series] = {}
     if raw is None or raw.empty:
         return out
-    vols = None
-    if isinstance(raw.columns, pd.MultiIndex):
-        lv0 = raw.columns.get_level_values(0)
-        closes = raw["Close"] if "Close" in lv0 else raw.xs("Close", axis=1, level=1)
-        if volumes is not None:
-            if "Volume" in lv0:
-                vols = raw["Volume"]
-            elif "Volume" in raw.columns.get_level_values(1):
-                vols = raw.xs("Volume", axis=1, level=1)
-    else:  # 単一銘柄・フラット列
-        closes = raw[["Close"]].rename(columns={"Close": tickers[0]})
-        if volumes is not None and "Volume" in raw.columns:
-            vols = raw[["Volume"]].rename(columns={"Volume": tickers[0]})
+    closes = _field(raw, "Adj Close", tickers)
+    if closes is None:
+        closes = _field(raw, "Close", tickers)
+    if closes is None:
+        return out
+    vols = _field(raw, "Volume", tickers) if volumes is not None else None
+    raws = _field(raw, "Close", tickers) if extras is not None else None
+    divs = _field(raw, "Dividends", tickers) if extras is not None else None
     for t in closes.columns:
         s = closes[t].dropna()
         s = s[s > 0]
         s = _drop_glitches(s)
-        if len(s) >= 30:
-            idx = pd.to_datetime(s.index).tz_localize(None)
-            if vols is not None and t in vols.columns:
-                v = vols[t].reindex(s.index).fillna(0).astype(float)
-                v.index = idx
-                volumes[str(t)] = v
-            s.index = idx
-            out[str(t)] = s.astype(float)
+        if len(s) < 30:
+            continue
+        idx = pd.to_datetime(s.index).tz_localize(None)
+        if vols is not None and t in vols.columns:
+            v = vols[t].reindex(s.index).fillna(0).astype(float)
+            v.index = idx
+            volumes[str(t)] = v
+        if raws is not None and t in raws.columns:
+            r = raws[t].reindex(s.index).astype(float)
+            r.index = idx
+            extras.setdefault("raw", {})[str(t)] = r
+        if divs is not None and t in divs.columns:
+            d = divs[t].reindex(s.index).fillna(0).astype(float)
+            d.index = idx
+            d = d[d > 0]
+            if len(d):
+                extras.setdefault("div", {})[str(t)] = d
+        s.index = idx
+        out[str(t)] = s.astype(float)
     return out
 
 
@@ -90,8 +112,11 @@ def _drop_glitches(s: pd.Series) -> pd.Series:
 
 
 def download_closes(tickers: list[str], period: str = "5y", batch_size: int = 150,
-                    volumes: dict[str, pd.Series] | None = None) -> dict[str, pd.Series]:
-    """全銘柄の終値を一括取得(volumesを渡すと出来高もそこに入れる)。取れなかった銘柄は小さいバッチでリトライ。"""
+                    volumes: dict[str, pd.Series] | None = None, extras: dict | None = None) -> dict[str, pd.Series]:
+    """
+    全銘柄の終値(配当・分割調整済み)を一括取得。volumesを渡すと出来高、extrasを渡すと
+    配当調整なしの終値と配当履歴も入れる。取れなかった銘柄は小さいバッチでリトライ。
+    """
     result: dict[str, pd.Series] = {}
 
     def run(batch: list[str]) -> None:
@@ -101,12 +126,13 @@ def download_closes(tickers: list[str], period: str = "5y", batch_size: int = 15
                     batch,
                     period=period,
                     interval="1d",
-                    auto_adjust=True,
+                    auto_adjust=extras is None,   # 配当情報が要る時は調整前/調整後の両方を取る
+                    actions=extras is not None,
                     group_by="column",
                     threads=True,
                     progress=False,
                 )
-                result.update(_extract_closes(raw, batch, volumes))
+                result.update(_extract_closes(raw, batch, volumes, extras))
                 return
             except Exception as exc:  # noqa: BLE001 — レート制限等は待って再試行
                 wait = 30 * (attempt + 1)
