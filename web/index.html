@@ -311,6 +311,29 @@ details.bt summary::-webkit-details-marker { display: none; }
 details.bt summary::after { content: "＋"; color: var(--muted); }
 details.bt[open] summary::after { content: "－"; }
 .bt h5 { margin: 14px 0 2px; font-size: 13px; color: var(--ink2); }
+.rank { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; counter-reset: rk; }
+.rank li { display: grid; grid-template-columns: 26px 1fr auto; gap: 10px; align-items: center; background: var(--wash); border-radius: 14px; padding: 9px 12px; counter-increment: rk; }
+.rank li::before { content: counter(rk); width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; background: var(--surface); color: var(--ink2); }
+.rank.good li::before { background: var(--accent); color: #fff; }
+.rank.bad li::before { background: var(--warn-wash); color: var(--warn-ink); }
+.rk-name { font-size: 14px; font-weight: 700; color: var(--ink); line-height: 1.35; min-width: 0; }
+.rk-name small { display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
+.rk-val { text-align: right; }
+.rk-val b { display: block; font-size: 16px; font-weight: 800; }
+.rank.good .rk-val b { color: var(--accent-ink); }
+.rank.bad .rk-val b { color: var(--warn-ink); }
+.rk-val small { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.fa-block { margin-top: 14px; }
+.fa-title { font-size: 13px; font-weight: 800; color: var(--ink); margin-bottom: 4px; }
+.fa-row { display: grid; grid-template-columns: 7.2em 1fr 7.4em; gap: 8px; align-items: center; min-height: 30px; }
+.fa-lab { font-size: 12px; color: var(--ink2); line-height: 1.25; }
+.fa-track { position: relative; height: 12px; background: var(--wash); border-radius: 6px; }
+.fa-bar { position: absolute; top: 0; bottom: 0; background: var(--axis); border-radius: 6px; }
+.fa-bar.up { background: var(--accent); }
+.fa-base { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--ink); opacity: 0.55; border-radius: 1px; }
+.fa-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fa-num b { font-size: 13px; font-weight: 800; margin-right: 6px; }
+.fa-num small { font-size: 11px; color: var(--muted); }
 .bt ul.cav { margin: 6px 0 0; padding-left: 1.2em; font-size: 12px; color: var(--muted); }
 
 .toast {
@@ -511,6 +534,13 @@ function renderShell() {
     el("p", { class: "tab-note", id: "tab-note" }),
     el("ul", { class: "list", id: "list" }),
     el("div", { id: "more-slot" })));
+
+  /* 条件の効き目分析 */
+  const faBox = el("div", { id: "fa-body", class: "sub", text: "読み込み中…" });
+  const faDet = el("details", { class: "bt" }, el("summary", {}, el("div", {}, el("h2", { text: "条件の効き目分析" }),
+    el("div", { class: "sub", style: "margin-top:2px", text: "どんな条件のシグナルが勝ちやすかったか" })), ), faBox);
+  faDet.addEventListener("toggle", () => { if (faDet.open && !faDet.dataset.loaded) { faDet.dataset.loaded = "1"; loadFactors(faBox); } });
+  main.append(el("section", { class: "card" }, faDet));
 
   /* 過去の成績(バックテスト) */
   const btBox = el("div", { id: "bt-body", class: "sub", text: "読み込み中…" });
@@ -975,15 +1005,63 @@ async function askAI(s, target) {
   }
 }
 
+/* ---------- 条件の効き目分析 ---------- */
+async function loadFactors(box) {
+  if (state.demo) { box.textContent = "デモでは表示されません(本番の計算結果にだけ付きます)。"; return; }
+  const bt = await getBacktest();
+  const fa = bt?.factors;
+  if (!fa) { box.textContent = "まだ分析結果がありません(次回の自動計算で作られます)。"; return; }
+  const b = fa.base;
+  const f = (v) => (v == null ? "-" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(1)}%`);
+  const w = (v) => (v == null ? "-" : `${Math.round(v * 100)}%`);
+  const all = fa.factors.flatMap((fc) => fc.buckets.map((x) => ({ ...x, factor: fc.label })));
+  const good = all.filter((x) => x.stable && x.n >= 300).sort((p, q) => q.mean60 - p.mean60).slice(0, 5);
+  const bad = all.filter((x) => x.n >= 300 && x.h1 != null && x.h2 != null && x.h1 < b.h1 && x.h2 < b.h2)
+    .sort((p, q) => p.mean60 - q.mean60).slice(0, 5);
+  const rankList = (arr, cls) => el("ol", { class: `rank ${cls}` }, ...arr.map((x) => el("li", {},
+    el("span", { class: "rk-name" }, el("small", { text: x.factor }), x.label),
+    el("span", { class: "rk-val" }, el("b", { text: f(x.mean60) }), el("small", { text: `勝率${w(x.win60)}・${x.n.toLocaleString()}件` })))));
+
+  // 1つの条件ごとの棒グラフ(60日後の平均。縦線=全体平均)
+  const maxAbs = Math.max(0.05, ...all.map((x) => Math.abs(x.mean60)));
+  const factorBlock = (fc) => el("div", { class: "fa-block" },
+    el("div", { class: "fa-title", text: fc.label }),
+    ...fc.buckets.map((x) => {
+      const pos = (v) => 50 + (v / maxAbs) * 50;
+      const l = Math.min(pos(0), pos(x.mean60)), r = Math.max(pos(0), pos(x.mean60));
+      return el("div", { class: "fa-row" },
+        el("span", { class: "fa-lab", text: x.label }),
+        el("span", { class: "fa-track" },
+          el("i", { class: x.mean60 >= b.mean60 ? "fa-bar up" : "fa-bar", style: `left:${l}%;width:${Math.max(0.8, r - l)}%` }),
+          el("i", { class: "fa-base", style: `left:${pos(b.mean60)}%` })),
+        el("span", { class: "fa-num" }, el("b", { text: f(x.mean60) }), el("small", { text: `${w(x.win60)}${x.stable ? " ◎" : ""}` })));
+    }));
+
+  box.className = "";
+  box.replaceChildren(
+    el("p", { class: "sub", text: `過去10年の底打ちシグナル ${b.n.toLocaleString()}回を、シグナルが出た日に分かっていた条件で分けて、60営業日後の成績を比べた。全体の平均は ${f(b.mean60)}(勝率${w(b.win60)})。` }),
+    el("h5", { text: "効いていた条件 TOP5" }),
+    good.length ? rankList(good, "good") : el("p", { class: "sub", text: "該当なし" }),
+    el("h5", { text: "避けた方がよかった条件" }),
+    bad.length ? rankList(bad, "bad") : el("p", { class: "sub", text: "該当なし" }),
+    el("p", { class: "muted", style: "font-size:12px;margin:6px 0 0", text: "どちらも前半(〜2021年)と後半(2022年〜)の両方で全体平均より良かった/悪かったものだけ(たまたまを除くため)。" }),
+    ...(fa.pairs?.length ? [
+      el("h5", { text: "組み合わせで良かったもの" }),
+      el("ol", { class: "rank good" }, ...fa.pairs.slice(0, 8).map((x) => el("li", {},
+        el("span", { class: "rk-name" }, el("small", { text: `${x.n.toLocaleString()}件・2020年除く ${f(x.ex2020)}` }), `${x.a} × ${x.b}`),
+        el("span", { class: "rk-val" }, el("b", { text: f(x.mean60) }), el("small", { text: `勝率${w(x.win60)}` }))))),
+    ] : []),
+    el("h5", { text: "条件ごとの成績(60日後の平均)" }),
+    el("p", { class: "muted", style: "font-size:12px;margin:0 0 4px", text: "縦線=全体平均。色付き=全体平均より上。◎=前半・後半とも全体平均超え。右の%は勝率。" }),
+    ...fa.factors.map(factorBlock),
+  );
+}
+
 /* ---------- 過去の成績(バックテスト) ---------- */
 async function loadBacktest(box) {
   if (state.demo) { box.textContent = "デモでは表示されません(本番の計算結果にだけ付きます)。"; return; }
-  let bt;
-  try {
-    const res = await fetch("data/backtest.json", { cache: "no-cache" });
-    if (!res.ok) throw new Error(res.status);
-    bt = await res.json();
-  } catch (_) {
+  const bt = await getBacktest();
+  if (!bt) {
     box.textContent = "まだバックテスト結果がありません(次回の自動計算で作られます)。";
     return;
   }

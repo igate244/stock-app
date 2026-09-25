@@ -46,7 +46,7 @@ JST = timezone(timedelta(hours=9))
 def _signal_state(close: np.ndarray):
     """
     各営業日tについて「底値圏 + 3ヶ月底打ち」を満たすか(先読みなし)と、その時点の底値・底の日。
-    戻り値: (sig[bool], low_at[t]=直近3ヶ月の最安値, low_idx_at[t]=その日, near[bool]=底値圏か) いずれも長さn。
+    戻り値: (sig[bool], low_at[t]=直近3ヶ月の最安値, low_idx_at[t]=その日, near[bool]=底値圏か, feat{特徴量の配列}) いずれも長さn。
     """
     n = len(close)
     W = signals.BOTTOM_LOOKBACK_DAYS
@@ -54,8 +54,9 @@ def _signal_state(close: np.ndarray):
     near = np.zeros(n, dtype=bool)
     low_at = np.full(n, np.nan)
     low_idx_at = np.zeros(n, dtype=int)
+    feat = {k: np.full(n, np.nan) for k in ("pos", "dec", "reb", "dsl", "dd")}
     if n < POS_MIN + 2:
-        return sig, low_at, low_idx_at, near
+        return sig, low_at, low_idx_at, near, feat
     s = pd.Series(close)
     lo = s.rolling(POS_WINDOW, min_periods=POS_MIN).min().to_numpy()
     hi = s.rolling(POS_WINDOW, min_periods=POS_MIN).max().to_numpy()
@@ -78,7 +79,14 @@ def _signal_state(close: np.ndarray):
     sig[W - 1 :] = bottomed & near[W - 1 :]
     low_at[W - 1 :] = low
     low_idx_at[W - 1 :] = rows + li
-    return sig, low_at, low_idx_at, near
+    # 条件の効き目分析用の特徴量(その日時点で分かる値だけ)
+    feat["pos"] = pos
+    with np.errstate(invalid="ignore", divide="ignore"):
+        feat["dd"] = 1 - close / hi  # 5年高値からの下落率
+    feat["dec"][W - 1 :] = dec
+    feat["reb"][W - 1 :] = reb
+    feat["dsl"][W - 1 :] = dsl
+    return sig, low_at, low_idx_at, near, feat
 
 
 def _events(close: np.ndarray, state=None) -> list[tuple[int, float, int]]:
@@ -89,7 +97,7 @@ def _events(close: np.ndarray, state=None) -> list[tuple[int, float, int]]:
 
 def _pick(mask: np.ndarray, state) -> list[tuple[int, float, int]]:
     """maskがTrueの日を先頭から拾う(一度拾ったらCOOLDOWN日は拾わない。翌日に買えない最終日は除く)。"""
-    _, low_at, low_idx_at, _ = state
+    low_at, low_idx_at = state[1], state[2]
     n = len(mask)
     out, last = [], -10**9
     for t in np.flatnonzero(mask):
@@ -102,7 +110,7 @@ def _pick(mask: np.ndarray, state) -> list[tuple[int, float, int]]:
 
 def _post_sim_series(close: np.ndarray, state, ref_curves) -> tuple[np.ndarray, np.ndarray]:
     """(旧方式・比較用)条件を満たしている各日の「底からの上昇カーブ」類似度と比較日数。それ以外の日はNaN/0。"""
-    sig, _, low_idx_at, _ = state
+    sig, low_idx_at = state[0], state[2]
     sim = np.full(len(close), np.nan)
     ln = np.zeros(len(close), dtype=int)
     if ref_curves:
@@ -324,11 +332,127 @@ class _Acc:
         }
 
 
-def run(closes: dict[str, pd.Series], refs: list[dict] | None = None) -> dict:
+# ---- 条件の効き目分析 ------------------------------------------------------------
+# 通常シグナルを「シグナル日に分かっていた条件」で分けて、どの条件だと成績が良かったかを見る。
+# たまたま(過剰最適化)を避けるため、前半(〜2021年)と後半(2022年〜)の両方で全体平均を上回ったかも出す。
+FACTORS = [
+    ("dec", "3ヶ月の下落率", [(0.15, 0.20, "15〜20%"), (0.20, 0.30, "20〜30%"), (0.30, 0.40, "30〜40%"), (0.40, 9, "40%以上")]),
+    ("reb", "底からの反発率(シグナル日)", [(0.10, 0.13, "10〜13%"), (0.13, 0.17, "13〜17%"), (0.17, 0.25, "17〜25%"), (0.25, 99, "25%以上")]),
+    ("dsl", "底からの日数", [(3, 6, "3〜5日"), (6, 11, "6〜10日"), (11, 21, "11〜20日"), (21, 999, "21日以上")]),
+    ("pos", "5年位置", [(-1, 0.10, "0〜10%"), (0.10, 0.20, "10〜20%"), (0.20, 0.31, "20〜30%")]),
+    ("dd", "5年高値からの下落", [(0, 0.40, "40%未満"), (0.40, 0.55, "40〜55%"), (0.55, 0.70, "55〜70%"), (0.70, 1.01, "70%以上")]),
+    ("vol", "値動きの荒さ(60日)", [(0, 0.02, "おとなしい(日2%未満)"), (0.02, 0.03, "ふつう(2〜3%)"), (0.03, 0.045, "荒い(3〜4.5%)"), (0.045, 9, "かなり荒い(4.5%以上)")]),
+    ("px", "株価", [(0, 500, "500円未満"), (500, 1000, "500〜1000円"), (1000, 3000, "1000〜3000円"), (3000, 1e9, "3000円以上")]),
+    ("sim", "勝ちパターン類似度", [(-1, 0.7, "0.70未満"), (0.7, 0.8, "0.70〜0.80"), (0.8, 0.9, "0.80〜0.90"), (0.9, 2, "0.90以上")]),
+    ("regime", "相場全体の向き", [("down", None, "下向き"), ("up", None, "上向き")]),
+    ("month", "買った月", [(m, None, f"{m}月") for m in range(1, 13)]),
+    ("sector", "業種", None),  # 業種は値そのままで分ける(件数の多い順)
+]
+FACTOR_MIN_N = 150
+
+
+def _bucket_label(spec, v):
+    if v is None or (isinstance(v, float) and np.isnan(v)):
+        return None
+    for lo, hi, label in spec:
+        if hi is None:
+            if v == lo:
+                return label
+        elif lo <= v < hi:
+            return label
+    return None
+
+
+def _factor_analysis(rows: list[dict]) -> dict | None:
+    if not rows:
+        return None
+    df = pd.DataFrame(rows)
+    df = df[df["r60"].notna()].copy()
+    if df.empty:
+        return None
+    first = df["year"] <= 2021
+    base = {
+        "n": int(len(df)), "mean60": round(_robust_mean(df["r60"].to_numpy()), 4), "win60": round(float((df["r60"] > 0).mean()), 4),
+        "h1": round(_robust_mean(df.loc[first, "r60"].to_numpy()), 4) if first.any() else None,
+        "h2": round(_robust_mean(df.loc[~first, "r60"].to_numpy()), 4) if (~first).any() else None,
+    }
+
+    def summarize(sub: pd.DataFrame) -> dict:
+        a = sub["r60"].to_numpy()
+        f1, f2 = sub.loc[sub["year"] <= 2021, "r60"].to_numpy(), sub.loc[sub["year"] >= 2022, "r60"].to_numpy()
+        ex = sub.loc[sub["year"] != 2020, "r60"].to_numpy()
+        r15 = sub["r15"].dropna().to_numpy()
+        h1 = round(_robust_mean(f1), 4) if len(f1) >= 30 else None
+        h2 = round(_robust_mean(f2), 4) if len(f2) >= 30 else None
+        return {
+            "n": int(len(a)),
+            "mean60": round(_robust_mean(a), 4),
+            "med60": round(float(np.median(a)), 4),
+            "win60": round(float((a > 0).mean()), 4),
+            "ex2020": round(_robust_mean(ex), 4) if len(ex) >= 30 else None,
+            "h1": h1, "h2": h2,
+            # 前半・後半の両方で全体平均を上回った = 期間によらず効いていそう
+            "stable": bool(h1 is not None and h2 is not None and base["h1"] is not None and base["h2"] is not None
+                           and h1 > base["h1"] and h2 > base["h2"]),
+            "r15": round(_robust_mean(r15), 4) if len(r15) >= 30 else None,
+            "r15_win": round(float((r15 > 0).mean()), 4) if len(r15) >= 30 else None,
+        }
+
+    factors = []
+    for key, label, spec in FACTORS:
+        if key not in df:
+            continue
+        if spec is None:
+            col = df[key].where(df[key].notna())
+            order = col.value_counts().index.tolist()
+        else:
+            col = df[key].map(lambda v, sp=spec: _bucket_label(sp, v))
+            order = [b[2] for b in spec]
+        df[f"b_{key}"] = col
+        buckets = []
+        for b in order:
+            sub = df[col == b]
+            if len(sub) >= (FACTOR_MIN_N if spec is None else 30):
+                buckets.append({"label": str(b), **summarize(sub)})
+        if buckets:
+            factors.append({"key": key, "label": label, "buckets": buckets})
+
+    # 2つの条件の組み合わせで良かったもの(件数が少ないとたまたまが混じるので FACTOR_MIN_N 件以上、前半後半とも全体超え)
+    keys = [f["key"] for f in factors if f["key"] not in ("month", "sector")]
+    labels = {f["key"]: f["label"] for f in factors}
+    pairs = []
+    for i, k1 in enumerate(keys):
+        for k2 in keys[i + 1 :]:
+            g = df.groupby([f"b_{k1}", f"b_{k2}"])
+            for (b1, b2), sub in g:
+                if len(sub) < FACTOR_MIN_N:
+                    continue
+                st = summarize(sub)
+                if st["stable"]:
+                    pairs.append({"a": f"{labels[k1]}: {b1}", "b": f"{labels[k2]}: {b2}", **st})
+    pairs.sort(key=lambda r: r["mean60"], reverse=True)
+    # 同じ条件ばかり並ばないように、1つの条件が出てくるのは2回まで
+    seen: dict[str, int] = {}
+    picked = []
+    for r in pairs:
+        if seen.get(r["a"], 0) >= 2 or seen.get(r["b"], 0) >= 2:
+            continue
+        seen[r["a"]] = seen.get(r["a"], 0) + 1
+        seen[r["b"]] = seen.get(r["b"], 0) + 1
+        picked.append(r)
+    pairs = picked
+
+    return {"base": base, "factors": factors, "pairs": pairs[:12],
+            "note": "通常シグナル(底値圏+3ヶ月底打ち)を、シグナル日に分かっていた条件で分けた60営業日後の成績。"
+                    "『安定』=前半(〜2021年)と後半(2022年〜)の両方で全体平均を上回ったもの"}
+
+
+def run(closes: dict[str, pd.Series], refs: list[dict] | None = None, sectors: dict[str, str] | None = None) -> dict:
     mkt = market_index(closes)
     mkt_label = MARKET_LABEL
     up = _market_uptrend(mkt)
     combo = {k: _Acc() for k, _ in COMBOS}
+    ev_rows: list[dict] = []  # 条件の効き目分析用(通常シグナル1回=1行)
     ref_curves = _ref_curves(refs)  # 旧方式(比較用)
     ref_tickers = {r["ticker"] for r in refs or []}
     tpl_all = [(r["ticker"], tp) for r in refs or [] for tp in r.get("templates", [])]
@@ -367,6 +491,10 @@ def run(closes: dict[str, pd.Series], refs: list[dict] | None = None) -> dict:
 
         state = _signal_state(close)
         evs = _events(close, state)
+        feat = state[4]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            lr = np.diff(np.log(close), prepend=np.nan)
+        vol60 = pd.Series(lr).rolling(60, min_periods=40).std().to_numpy()
         if evs:
             stocks_with += 1
 
@@ -381,7 +509,7 @@ def run(closes: dict[str, pd.Series], refs: list[dict] | None = None) -> dict:
         if use_sim:
             T = np.stack([tp["z"] for tk, tp in tpl_all if tk != ticker])
             sim, _ = signals.pre_similarity_all(close, T)
-            sig, _, _, near = state
+            sig, near = state[0], state[3]
             with np.errstate(invalid="ignore"):
                 for key, _, thr, cond in SIM_HITS:
                     if cond == "post":
@@ -413,6 +541,17 @@ def run(closes: dict[str, pd.Series], refs: list[dict] | None = None) -> dict:
             reg = regs[t]
             if reg:
                 combo[f"all_{reg}"].add(ticker, close, dates, t, low)
+            row = {
+                "dec": feat["dec"][t], "reb": feat["reb"][t], "pos": feat["pos"][t], "dsl": feat["dsl"][t], "dd": feat["dd"][t],
+                "vol": vol60[t], "px": close[t], "month": dates[e].month, "year": dates[e].year,
+                "sector": (sectors or {}).get(ticker), "regime": reg,
+                "sim": float(sim[t]) if use_sim and not np.isnan(sim[t]) else np.nan,
+                "r60": close[e + 60] / entry - 1 if e + 60 < n else np.nan,
+                "r15": np.nan,
+            }
+            if e + MAX_HOLD < n:
+                row["r15"] = _simulate(close[e : e + MAX_HOLD + 1] / entry - 1, 0.15, "floor", low / entry - 1)[0]
+            ev_rows.append(row)
             for h in HOLD_DAYS:
                 if e + h < n:
                     r = close[e + h] / entry - 1
@@ -504,6 +643,7 @@ def run(closes: dict[str, pd.Series], refs: list[dict] | None = None) -> dict:
             {"regime": "down", "label": f"相場全体が下向き({mkt_label}が200日線より下)", "h60": _stats(regime["down"][60]), "h120": _stats(regime["down"][120])},
         ] if up is not None else [],
         "by_similarity": by_similarity,
+        "factors": _factor_analysis(ev_rows),
         "caveats": [
             "現在上場中の銘柄だけで計算(上場廃止銘柄が入らない分、成績は実際より良く出やすい)",
             "手数料・スリッページは含まない",
@@ -544,6 +684,18 @@ def summary_markdown(bt: dict) -> str:
         for r in bt["by_regime"]:
             a, b = r["h60"], r["h120"]
             lines.append(f"| {r['label']} | {a.get('n', 0)} | {f(a.get('mean'))} | {f(a.get('median'))} | {w(a.get('win'))} | {f(b.get('mean'))} | {f(b.get('median'))} | {w(b.get('win'))} |")
+    fa = bt.get("factors")
+    if fa:
+        b = fa["base"]
+        lines += ["", "### 条件の効き目分析(60日保有)", f"全体: {b['n']}件 平均 {f(b['mean60'])} 勝率 {w(b['win60'])} / 前半 {f(b['h1'])} 後半 {f(b['h2'])}", "",
+                  "| 条件 | 区分 | 件数 | 平均 | 勝率 | 2020除く | 前半 | 後半 | 安定 | +15/底値割れ |", "|---|---|---|---|---|---|---|---|---|---|"]
+        for fc in fa["factors"]:
+            for x in fc["buckets"]:
+                lines.append(f"| {fc['label']} | {x['label']} | {x['n']} | {f(x['mean60'])} | {w(x['win60'])} | {f(x['ex2020'])} | {f(x['h1'])} | {f(x['h2'])} | {'◎' if x['stable'] else ''} | {f(x['r15'])} |")
+        if fa.get("pairs"):
+            lines += ["", "#### 良かった組み合わせ(前半・後半とも全体超え)", "| 条件1 | 条件2 | 件数 | 平均 | 勝率 | 2020除く |", "|---|---|---|---|---|---|"]
+            for x in fa["pairs"]:
+                lines.append(f"| {x['a']} | {x['b']} | {x['n']} | {f(x['mean60'])} | {w(x['win60'])} | {f(x['ex2020'])} |")
     bs = bt.get("by_similarity")
     if bs:
         lines += ["", "### 勝ちパターン類似度別(上がる前の形で比較)", "比較対象(底の日): " + ", ".join(f"{k} {v}" for k, v in bs.get("ref_lows", {}).items()), "",

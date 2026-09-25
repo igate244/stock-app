@@ -231,7 +231,8 @@ def main() -> None:
     # バックテスト(失敗しても毎日のスクリーニング結果の公開は止めない)
     try:
         t0 = time.time()
-        bt = backtest.run(closes, refs)
+        sectors = {x["t"]: x["s"] for x in result["stocks"]}
+        bt = backtest.run(closes, refs, sectors)
         (out / "backtest.json").write_text(json.dumps(bt, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
         md = backtest.summary_markdown(bt)
         print(md)
