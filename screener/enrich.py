@@ -20,6 +20,7 @@ import yfinance as yf
 _REVENUE_ROWS = ["Total Revenue", "TotalRevenue"]
 _OP_ROWS = ["Operating Income", "OperatingIncome"]
 _NET_ROWS = ["Net Income", "NetIncome", "Net Income Common Stockholders"]
+_EQUITY_ROWS = ["Stockholders Equity", "Common Stock Equity", "Total Equity Gross Minority Interest"]
 
 
 def _row(df: pd.DataFrame, names: list[str]) -> pd.Series | None:
@@ -45,8 +46,9 @@ def earnings(ticker: str) -> dict:
     yfinanceは日本の中小型株だと欠損が多いので、取れなければ has_data=False(判断材料なし)。
     フィルタには使わず「証拠」として画面とAIに渡す。
     """
+    tk = yf.Ticker(ticker)
     try:
-        df = yf.Ticker(ticker).quarterly_financials
+        df = tk.quarterly_financials
     except Exception:  # noqa: BLE001
         df = None
     if df is None or df.empty:
@@ -68,6 +70,26 @@ def earnings(ticker: str) -> dict:
     else:
         trend = "データ不足"
 
+    # 赤字かどうか(直近4四半期)
+    vals = profit.dropna().tail(4) if profit is not None else pd.Series(dtype=float)
+    loss_last = bool(vals.iloc[-1] < 0) if len(vals) else None
+    loss_q = int((vals < 0).sum()) if len(vals) else None
+
+    # 自己資本比率(直近の四半期末)
+    eq_ratio = None
+    try:
+        bs = tk.quarterly_balance_sheet
+        if bs is not None and not bs.empty:
+            bs = bs.reindex(sorted(bs.columns), axis=1)
+            eq = _row(bs, _EQUITY_ROWS)
+            ta = _row(bs, ["Total Assets", "TotalAssets"])
+            if eq is not None and ta is not None:
+                e_last, a_last = eq.dropna(), ta.dropna()
+                if len(e_last) and len(a_last) and a_last.iloc[-1]:
+                    eq_ratio = round(float(e_last.iloc[-1] / a_last.iloc[-1]), 4)
+    except Exception:  # noqa: BLE001
+        pass
+
     return {
         "has_data": True,
         "trend": trend,
@@ -76,6 +98,10 @@ def earnings(ticker: str) -> dict:
         "rev_qoq": _growth(rev, 1),
         "profit_yoy": p_yoy,
         "profit_qoq": p_qoq,
+        "loss_last": loss_last,   # 直近の四半期が赤字か
+        "loss_q": loss_q,         # 直近4四半期のうち赤字の数
+        "n_q": int(len(vals)),
+        "eq_ratio": eq_ratio,     # 自己資本比率(マイナス=債務超過)
     }
 
 

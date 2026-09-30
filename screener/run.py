@@ -25,7 +25,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from screener import backtest, data, dividend, enrich, events, signals, volume
+from screener import backtest, data, dividend, enrich, events, quality, signals, volume
 from screener.themes import JPX_33_SECTORS, THEME_GENRES, tag_themes
 
 CONFIG = Path(__file__).resolve().parent.parent / "config" / "win_patterns.yaml"
@@ -134,6 +134,7 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict[str, pd
         cut = ser.index[-1] - pd.DateOffset(years=5)
         closes[t] = ser[ser.index >= cut]
     refs = load_references(closes, closes_full)
+    alerts = quality.fetch_alert_codes()
 
     stocks: list[dict] = []
     early: list[tuple] = []
@@ -157,6 +158,12 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict[str, pd
             "reb": _r(bottom.rebound_pct),
             "dsl": bottom.days_since_low,
         }
+        # 足切りの軽いチェック(JPXの注意喚起・低位株・売買の少なさ)
+        vol = volumes_full.get(row.ticker)
+        turnover = float((close.tail(20) * vol.reindex(close.index).tail(20)).mean()) if vol is not None else None
+        rk = quality.cheap_risks(row.ticker, float(close.iloc[-1]), turnover, alerts)
+        if rk:
+            rec["rk"] = rk
         if not pos.near_low:
             rec["st"] = "high"
         else:
@@ -238,6 +245,20 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict[str, pd
                 x["ch"] = _charts(closes[e["t"]])
     except Exception as exc:  # noqa: BLE001
         print(f"[events] 失敗: {exc}")
+
+    # 材料チェック(候補のみ: 決算・ニュース・イベント・配当から、良い材料/悪い材料/足切り理由)
+    ev_by_t: dict[str, list[dict]] = {}
+    for e in (ev or {}).get("recent", []):
+        ev_by_t.setdefault(e["t"], []).append(e)
+    n_risk = 0
+    for rec, _close, _bottom in candidates:
+        es = ev_by_t.get(rec["t"], [])
+        q = quality.assess(rec, [e["title"] for e in es], {e["type"] for e in es})
+        rec["q"] = {"s": q["s"], "p": q["p"], "m": q["m"]}
+        if q["r"]:
+            rec["rk"] = q["r"]
+            n_risk += 1
+    print(f"[quality] 候補 {len(candidates)} 銘柄のうち 危ない材料あり {n_risk}")
 
     # 今の地合い(日本株全体の指数が200日移動平均より上か下か)。バックテストと同じ指数・同じ判定
     market = None

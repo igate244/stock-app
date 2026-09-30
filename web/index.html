@@ -257,6 +257,17 @@ ul.list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10
 .item .facts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; color: var(--ink2); margin-top: 8px; }
 .item .facts span { background: var(--wash); border-radius: 8px; padding: 2px 8px; }
 .item .facts span.star { background: var(--accent-wash); color: var(--accent-ink); font-weight: 700; }
+.item .facts span.good { background: var(--good-wash); color: var(--good-ink); font-weight: 700; }
+.item .facts span.warn { background: var(--warn-wash); color: var(--warn-ink); font-weight: 700; }
+.risk-toggle { margin-top: 8px; font-size: 13px; color: var(--warn-ink); border-color: var(--warn-wash); background: var(--warn-wash); }
+.risk-toggle .n { color: var(--warn-ink); text-decoration: underline; }
+.risk-toggle[hidden] { display: none; }
+.qbox { display: grid; gap: 8px; }
+.qrow { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; line-height: 1.5; }
+.qrow b { flex: none; min-width: 3.2em; font-size: 12px; padding: 2px 8px; border-radius: 8px; text-align: center; }
+.qrow.p b { background: var(--good-wash); color: var(--good-ink); }
+.qrow.m b { background: var(--warn-wash); color: var(--warn-ink); }
+.qrow.r b { background: rgba(220, 38, 38, 0.12); color: #d93636; }
 .empty { text-align: center; color: var(--ink2); padding: 28px 12px; font-size: 14px; }
 .more { width: 100%; margin-top: 10px; min-height: 46px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); color: var(--accent-ink); font-weight: 700; }
 
@@ -435,6 +446,7 @@ const state = {
   volSort: "ratio",
   divSort: "y",
   divDate: "all",
+  showRisky: false,
   evType: "all",
   q: "",
   shown: PAGE,
@@ -526,6 +538,7 @@ function start(data, demo) {
   state.sort = recall("sort", "best");
   state.mode = ["bottom", "vol", "ev", "div"].includes(recall("mode", "bottom")) ? recall("mode", "bottom") : "bottom";
   state.divSort = recall("divSort", "y");
+  state.showRisky = !!recall("showRisky", false);
   state.volSort = recall("volSort", "ratio");
   renderShell();
   syncHeaderHeight();
@@ -598,6 +611,7 @@ function renderShell() {
     el("div", { class: "tabs-wrap" }, tabs),
     el("div", { class: "tools" }, search, sort),
     el("p", { class: "tab-note", id: "tab-note" }),
+    el("button", { class: "chip risk-toggle", id: "risk-toggle", hidden: true, onclick: () => { state.showRisky = !state.showRisky; store("showRisky", state.showRisky); render(); } }),
     el("ul", { class: "list", id: "list" }),
     el("div", { id: "more-slot" })));
 
@@ -725,6 +739,7 @@ function renderVol(pool = selected()) {
     const v = s.vs;
     const [mv, ml] = (VOL_METRIC[k] || VOL_METRIC.ratio)(v);
     const facts = [
+      s.rk ? { t: `⚠ ${s.rk.join("・")}`, warn: true } : null,
       k !== "d" ? { t: `当日 ${fmtP(v.d)}` } : null,
       k !== "to" ? { t: `売買代金 ${oku(v.to)}/日` } : null,
       v.hi ? { t: "52週高値更新", star: true } : null,
@@ -736,7 +751,7 @@ function renderVol(pool = selected()) {
       el("span", { class: "name" }, el("span", { class: "rank-no", text: String(i + 1) }), s.n),
       el("span", { class: "metric key" }, el("b", { text: mv }), el("small", { text: ml })),
       el("span", { class: "code", text: `${code(s.t)} ・ ${s.s}` }),
-      el("span", { class: "facts" }, ...facts.map((f) => el("span", { class: f.star ? "star" : null, text: f.t }))))));
+      el("span", { class: "facts" }, ...facts.map((f) => el("span", { class: f.warn ? "warn" : f.star ? "star" : null, text: f.t }))))));
   });
 }
 
@@ -848,12 +863,13 @@ function renderDiv(pool = selected()) {
       d.tr ? { t: d.tr, star: d.tr === "増配傾向" } : null,
       k !== "pos" && s.pos != null ? { t: `5年位置 ${pct(s.pos)}` } : null,
       s.st === "pass" ? { t: "底打ち候補", star: true } : null,
+      s.rk ? { t: `⚠ ${s.rk.join("・")}`, warn: true } : null,
     ].filter(Boolean);
     ul.append(el("li", {}, el("button", { class: "item", onclick: () => openDetail(s, "div") },
       el("span", { class: "name" }, el("span", { class: "rank-no", text: String(i + 1) }), s.n),
       el("span", { class: "metric key" }, el("b", { text: mv }), el("small", { text: ml })),
       el("span", { class: "code", text: `${code(s.t)} ・ ${s.s}` }),
-      el("span", { class: "facts" }, ...facts.map((f) => el("span", { class: f.star ? "star" : null, text: f.t }))))));
+      el("span", { class: "facts" }, ...facts.map((f) => el("span", { class: f.warn ? "warn" : f.star ? "star" : null, text: f.t }))))));
   });
   const more = $("#div-more");
   more.replaceChildren();
@@ -1082,11 +1098,13 @@ function render() {
 
   const by = { pass: 0, nobottom: 0, high: 0, nodata: 0 };
   for (const s of pool) by[s.st] = (by[s.st] || 0) + 1;
+  const risky = pool.filter((s) => s.st === "pass" && s.rk).length;
   const stages = [
     { label: "対象", n: pool.length, tab: null, color: "--f1" },
     { label: "株価あり", n: pool.length - by.nodata, drop: by.nodata, tab: "nodata", color: "--f2" },
     { label: "底値圏", n: by.nobottom + by.pass, drop: by.high, tab: "high", color: "--f3" },
-    { label: "底打ち=候補", n: by.pass, drop: by.nobottom, tab: "pass", dropTab: "nobottom", color: "--f4" },
+    { label: "底打ち", n: by.pass, drop: by.nobottom, tab: "pass", dropTab: "nobottom", color: "--f3" },
+    { label: "安全チェック", n: by.pass - risky, drop: risky, tab: "pass", dropTab: "risky", color: "--f4" },
   ];
   const f = $("#funnel");
   f.replaceChildren();
@@ -1104,15 +1122,17 @@ function render() {
       : el("div", { class: "f-row" }, ...parts));
     if (i > 0 && st.drop) {
       const dropTab = st.dropTab || st.tab;
-      const reason = { nodata: "データなし", high: "底値圏より上", nobottom: "底打ちしてない" }[dropTab];
+      const reason = { nodata: "データなし", high: "底値圏より上", nobottom: "底打ちしてない", risky: "危ない材料あり" }[dropTab];
+      const go = dropTab === "risky" ? () => { state.showRisky = true; store("showRisky", true); setTab("pass", true); } : () => setTab(dropTab, true);
       f.append(el("div", { class: "f-drop" },
-        el("button", { class: "btn-text", style: "font-size:12px;padding:0", onclick: () => setTab(dropTab, true) }, `↳ ${st.drop.toLocaleString()}銘柄が脱落(${reason})`)));
+        el("button", { class: "btn-text", style: "font-size:12px;padding:0", onclick: go }, `↳ ${st.drop.toLocaleString()}銘柄が脱落(${reason})`)));
     }
   });
 
   for (const b of document.querySelectorAll(".tab")) {
     b.setAttribute("aria-selected", String(b.dataset.st === state.tab));
-    b.querySelector(".n").textContent = (by[b.dataset.st] || 0).toLocaleString();
+    const n = b.dataset.st === "pass" && !state.showRisky ? by.pass - risky : by[b.dataset.st] || 0;
+    b.querySelector(".n").textContent = n.toLocaleString();
   }
   renderList(pool);
   renderVol(pool);
@@ -1133,7 +1153,7 @@ function syncSort() {
   const sel = $("#sort");
   if (!sel) return;
   const opts = state.tab === "pass"
-    ? [["best", "おすすめ順"], ["sim", "類似度が高い順"], ["reb", "反発が大きい順"], ["pos", "株価位置が低い順"]]
+    ? [["best", "材料スコア順"], ["sim", "類似度が高い順"], ["reb", "反発が大きい順"], ["pos", "株価位置が低い順"]]
     : state.tab === "nobottom"
       ? [["sim", "類似度が高い順"], ["pos", "株価位置が低い順"], ["reb", "反発が大きい順"], ["name", "コード順"]]
       : [["pos", "株価位置が低い順"], ["reb", "反発が大きい順"], ["name", "コード順"]];
@@ -1146,7 +1166,7 @@ function sortStocks(list) {
   const k = state.sort;
   const num = (v, fb) => (v == null ? fb : v);
   const cmp = {
-    best: (a, b) => isBest(b) - isBest(a) || num(b.ai?.score, -1) - num(a.ai?.score, -1) || num(b.sim, 0) - num(a.sim, 0),
+    best: (a, b) => num(b.q?.s, -99) - num(a.q?.s, -99) || isBest(b) - isBest(a) || num(b.ai?.score, -1) - num(a.ai?.score, -1) || num(b.sim, 0) - num(a.sim, 0),
     sim: (a, b) => num(b.sim, 0) - num(a.sim, 0),
     reb: (a, b) => num(b.reb, -9) - num(a.reb, -9),
     pos: (a, b) => num(a.pos, 9) - num(b.pos, 9),
@@ -1158,11 +1178,19 @@ function sortStocks(list) {
 function renderList(pool = selected()) {
   const q = state.q.toLowerCase();
   let list = pool.filter((s) => s.st === state.tab);
+  const nRisky = state.tab === "pass" ? list.filter((s) => s.rk).length : 0;
+  if (state.tab === "pass" && !state.showRisky) list = list.filter((s) => !s.rk);
+  const rt = $("#risk-toggle");
+  if (rt) {
+    rt.hidden = !(state.tab === "pass" && nRisky);
+    rt.setAttribute("aria-pressed", String(state.showRisky));
+    rt.replaceChildren(state.showRisky ? `⚠ 危ない材料ありも表示中(${nRisky})` : `⚠ 危ない材料あり ${nRisky}銘柄を非表示中`, el("span", { class: "n", text: state.showRisky ? "隠す" : "表示する" }));
+  }
   if (q) list = list.filter((s) => s.n.toLowerCase().includes(q) || s.t.toLowerCase().includes(q));
   list = sortStocks(list);
 
   const notes = {
-    pass: "底値圏にいて、直近で底打ちした銘柄。★=過去の統計で成績が一番良かった条件(類似度0.90以上)。",
+    pass: "底値圏で底打ちして、安全チェックを通った銘柄。材料スコア=良い材料の数−悪い材料の数。★=類似度0.90以上。",
     nobottom: "底値圏にはいるけど、まだ底打ちの形になってない銘柄。類似度が高いものは「反発前の早い段階」の可能性。",
     high: "5年の値幅の中で、まだ底値圏まで下がってない銘柄。",
     nodata: "株価が取れなかった銘柄(上場直後・売買停止など)。",
@@ -1203,7 +1231,7 @@ function row(s, rank) {
   } else if (SORT_METRIC[k]) {
     [val, label] = SORT_METRIC[k](s); key = true;
   } else if (k === "best" && s.st === "pass") {
-    [val, label] = s.ai ? [s.ai.score.toFixed(2), "AIスコア ▼"] : [(s.sim ?? 0).toFixed(2), "類似度 ▼"]; key = true;
+    [val, label] = s.q ? [`${s.q.s > 0 ? "+" : ""}${s.q.s}`, "材料スコア ▼"] : s.ai ? [s.ai.score.toFixed(2), "AIスコア ▼"] : [(s.sim ?? 0).toFixed(2), "類似度 ▼"]; key = true;
   } else if (s.st === "pass") {
     [val, label] = [(s.sim ?? 0).toFixed(2), "類似度"];
   } else {
@@ -1211,11 +1239,14 @@ function row(s, rank) {
   }
   const metric = el("span", { class: key ? "metric key" : "metric" }, el("b", { text: val }), label ? el("small", { text: label }) : null);
   const facts = [];
+  if (s.rk) facts.push({ warn: true, t: `⚠ ${s.rk.join("・")}` });
   if (isBest(s)) facts.push({ star: true, t: "★ ベスト条件" });
+  if (s.q?.p?.length) facts.push({ good: true, t: `＋${s.q.p.slice(0, 3).map((x) => x.replace(/\(.*\)/, "")).join("・")}${s.q.p.length > 3 ? " ほか" : ""}` });
+  if (s.q?.m?.length) facts.push({ warn: true, t: `－${s.q.m.slice(0, 2).map((x) => x.replace(/^ニュース: /, "")).join("・")}${s.q.m.length > 2 ? " ほか" : ""}` });
   if (s.st !== "nodata") {
     if (k !== "pos") facts.push(`5年位置 ${pct(s.pos)}`);
     facts.push(`3ヶ月 ${s.dec != null ? "-" + Math.round(s.dec * 100) + "%" : "-"}→底から${pct(s.reb, true)}`);
-    if (s.earn) facts.push(`業績 ${s.earn.trend}`);
+    if (s.earn && !s.q) facts.push(`業績 ${s.earn.trend}`);
     if (s.dv?.y) facts.push(`配当 ${fmtY(s.dv.y)}`);
     if (s.sim_ref && s.st === "pass") facts.push(`${s.sim_ref}似`);
     if (s.sim_ref && s.st === "nobottom" && (s.sim ?? 0) >= 0.85) facts.push(`${s.sim_ref}の上昇前に似てる`);
@@ -1225,7 +1256,7 @@ function row(s, rank) {
     el("span", { class: "name" }, rank ? el("span", { class: "rank-no", text: String(rank) }) : null, s.n),
     metric,
     el("span", { class: "code", text: `${code(s.t)} ・ ${s.s}` }),
-    facts.length ? el("span", { class: "facts" }, ...facts.map((f) => (typeof f === "string" ? el("span", { text: f }) : el("span", { class: "star", text: f.t })))) : null);
+    facts.length ? el("span", { class: "facts" }, ...facts.map((f) => (typeof f === "string" ? el("span", { text: f }) : el("span", { class: f.warn ? "warn" : f.good ? "good" : "star", text: f.t })))) : null);
 }
 
 /* ---------- 詳細シート ---------- */
@@ -1292,6 +1323,7 @@ function openDetail(s, ctx = null) {
     panel.append(el("div", { class: "section" }, el("h4", { text: "数字" }), stats));
   }
 
+  if (s.q || s.rk) panel.append(qualitySection(s));
   if (s.dv) panel.append(divSection(s));
   else if (s.st !== "nodata") panel.append(el("div", { class: "section" }, el("h4", { text: "配当" }),
     el("div", { class: "box sub", text: "配当なし(直近1年以上、配当の記録がない)。成長重視で配当を出していない会社か、データが取れていない可能性がある。" })));
@@ -1365,6 +1397,19 @@ async function loadChart(s) {
   } catch (_) { return false; }
 }
 
+function qualitySection(s) {
+  const q = s.q || { p: [], m: [] };
+  const rows = [
+    s.rk ? el("div", { class: "qrow r" }, el("b", { text: "足切り" }), el("span", { text: `${s.rk.join("・")}(初期状態の候補一覧からは外している)` })) : null,
+    el("div", { class: "qrow p" }, el("b", { text: "良い" }), el("span", { text: q.p.length ? q.p.join("・") : "特になし" })),
+    el("div", { class: "qrow m" }, el("b", { text: "悪い" }), el("span", { text: q.m.length ? q.m.join("・") : "特になし" })),
+  ];
+  return el("div", { class: "section" },
+    el("h4", { text: s.q ? `材料チェック(スコア ${s.q.s > 0 ? "+" : ""}${s.q.s})` : "材料チェック" }),
+    el("div", { class: "box qbox" }, ...rows,
+      el("div", { class: "muted", style: "font-size:11.5px", text: "決算(Yahoo Finance)・ニュース見出し・JPXの注意喚起から機械的に判定。データが無い項目は判定していない。安全装置なので、儲かることを保証するものではない。" })));
+}
+
 function divWhy(s) {
   const d = s.dv;
   return `配当利回り${fmtY(d.y)}(直近1年で1株${d.ttm}円)。配当は年${d.m.length}回(${d.m.map((m) => m + "月").join("・")})。${d.cum ? `次の権利付最終日は${mdw(d.cum)}(推定)。` : ""}${d.tr ? d.tr + "。" : ""}`;
@@ -1413,19 +1458,32 @@ function stat(label, value, hint) {
 
 function buildPrompt(s) {
   const e = s.earn || {};
-  const earnTxt = !e.has_data ? "データなし" : `トレンド${e.trend}、売上前年比${pct(e.rev_yoy, true)}、${e.metric}前年比${pct(e.profit_yoy, true)}、前四半期比${pct(e.profit_qoq, true)}`;
-  const news = (s.news || []).map((n) => `・[${n.d}] ${n.t}`).join("\n") || "なし";
-  const refs = (state.data.refs || []).join("・") || "三菱電機・オムロン・キーエンス・ABEJA・円谷フィールズ";
-  return `日本株のスクリーニングで引っかかった銘柄について、参考意見がほしい。
-自分の「勝ちパターン」は、${refs}のような「長く下げて底打ちしたあと上がっていく」形。この銘柄がそれに当てはまりそうか、良い点と懸念点を簡潔に評価して。最新の決算やニュースも調べて補足して。最終判断は自分でするので参考意見でOK。
+  const m = state.data.market;
+  const refs = (state.data.refs || []).slice(0, 3).join("・") || "三菱電機・オムロン・キーエンス";
+  const lines = [
+    `・株価: ${yen(s.px)}円 / 5年の値幅の下から${pct(s.pos)}の位置`,
+    s.dec != null ? `・直近3ヶ月: ${Math.round(s.dec * 100)}%下げて、底から${pct(s.reb, true)}反発(底から${s.dsl}営業日)` : null,
+    s.sim != null ? `・勝ちパターン(${refs}など)の上昇前の形との類似度: ${s.sim.toFixed(2)}(1に近いほど似ている)` : null,
+    s.vs ? `・出来高: 普段の${s.vs.r}倍に急増、その日${fmtP(s.vs.d)}(${s.vs.age === 0 ? "今日" : s.vs.age + "営業日前"})` : null,
+    e.has_data ? `・業績: ${e.trend}(売上前年比${pct(e.rev_yoy, true)}、${e.metric}前年比${pct(e.profit_yoy, true)})` : null,
+    s.dv ? `・配当: 利回り${fmtY(s.dv.y)}(年${s.dv.ttm}円)${s.dv.cum ? `、次の権利付最終日${mdw(s.dv.cum)}ごろ` : ""}` : "・配当: なし",
+    m ? `・相場全体: ${m.up ? "上向き" : "下向き"}(日本株全体が200日線より${fmtP(m.gap)})` : null,
+    s.q ? `・機械チェック: 良い材料(${s.q.p.join("・") || "なし"}) / 悪い材料(${s.q.m.join("・") || "なし"})` : null,
+    s.rk ? `・注意: ${s.rk.join("・")}` : null,
+  ].filter(Boolean);
+  const evs = (state.data.events?.recent || []).filter((x) => x.t === s.t).map((x) => `${x.date.slice(5).replace("-", "/")} ${x.title}`);
+  const news = [...evs, ...(s.news || []).map((n) => `${n.d} ${n.t}`)].slice(0, 5);
+  return `日本株の「${s.n}(${code(s.t)}・${s.s})」について分析して。最新の決算・ニュースも調べて補足してOK。投資判断は自分でするので参考意見で。
 
-銘柄: ${s.n}(${code(s.t)}) / ${s.s}
-最新終値: ${yen(s.px)}円
-5年株価位置: ${pct(s.pos)}(0%=5年最安値)
-直近3ヶ月: ${s.dec != null ? Math.round(s.dec * 100) : "-"}%下落 → 底から${pct(s.reb, true)}反発(底から${s.dsl}営業日)
-${s.sim != null ? `勝ちパターン類似度(直近60日の形と、勝ちパターン銘柄が大きく上がる前の形の相関): ${s.sim.toFixed(2)}(一番近い: ${s.sim_ref || "-"})\n` : ""}${s.dv ? `配当: 利回り${fmtY(s.dv.y)}(年${s.dv.ttm}円・${s.dv.m.map((m) => m + "月").join("・")})\n` : ""}業績: ${earnTxt}
-直近ニュース:
-${news}`;
+【手元のデータ】
+${lines.join("\n")}${news.length ? `\n【直近の見出し】\n${news.map((x) => "・" + x).join("\n")}` : ""}
+
+【答え方】各項目は短く(箇条書き3つまで)。
+1. 明るい材料
+2. 暗い材料
+3. 短期(〜1ヶ月)の見通し: 上がる/横ばい/下がる のどれが有力か、理由、注意点
+4. 中長期(半年〜数年)の見通し: 同じく
+5. まとめ(1行)`;
 }
 
 // Claude: URLで質問文ごと渡せる / Gemini: URLで渡す公式の方法がないので、コピーして開く(貼り付けて送信)
