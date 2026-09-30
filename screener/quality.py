@@ -123,6 +123,25 @@ def assess(rec: dict, event_titles: list[str], event_types: set[str]) -> dict:
             elif er >= 0.5:
                 plus.append("財務が健全(自己資本比率50%以上)"); score += 1
 
+    elif rec.get("fin"):
+        # 四半期決算が取れない銘柄は、Yahoo Financeの会社情報(直近12ヶ月)で代わりに判定
+        f = rec["fin"]
+        if f.get("rg") is not None:
+            if f["rg"] > 0:
+                plus.append("増収"); score += 1
+            elif f["rg"] < -0.05:
+                minus.append("減収"); score -= 1
+        if f.get("eg") is not None:
+            if f["eg"] > 0:
+                plus.append("増益"); score += 1
+            elif f["eg"] < 0:
+                minus.append("減益"); score -= 1
+        if f.get("pm") is not None:
+            if f["pm"] > 0:
+                plus.append("黒字"); score += 1
+            elif f["pm"] < 0:
+                minus.append("赤字(直近12ヶ月)"); score -= 1
+
     titles = [n.get("t", "") for n in rec.get("news") or []] + list(event_titles)
     for lab in _hits(titles, NEG_NEWS):
         minus.append(f"ニュース: {lab}")

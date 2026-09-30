@@ -142,6 +142,10 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict[str, pd
 
     for row in universe.itertuples(index=False):
         base = {"t": row.ticker, "n": str(row.name), "s": str(row.sector), "th": tag_themes(str(row.name))}
+        if isinstance(getattr(row, "market", None), str):
+            base["mk"] = row.market
+        if isinstance(getattr(row, "size", None), str):
+            base["sz"] = row.size
         close = closes.get(row.ticker)
         if close is None:
             stocks.append({**base, "st": "nodata"})
@@ -196,6 +200,12 @@ def screen(limit: int | None = None) -> tuple[dict[str, pd.Series], dict[str, pd
     for i, (rec, close, bottom) in enumerate(candidates, 1):
         # STEP4 業績 / STEP6 ニュース
         rec["earn"] = enrich.earnings(rec["t"])
+        prof = enrich.profile(rec["t"])
+        if prof.get("biz"):
+            rec["biz"] = prof["biz"]
+        fin = {k: prof[k] for k in ("pm", "rg", "eg") if k in prof}
+        if fin:
+            rec["fin"] = fin
         rec["news"] = enrich.news(rec["n"])
 
         # グラフ用データ(5年=週足、3ヶ月=日足)

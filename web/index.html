@@ -263,6 +263,11 @@ ul.list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10
 .risk-toggle .n { color: var(--warn-ink); text-decoration: underline; }
 .risk-toggle[hidden] { display: none; }
 .qbox { display: grid; gap: 8px; }
+.box.company { margin-top: 12px; }
+.company-h { font-size: 12px; font-weight: 800; color: var(--accent-ink); margin-bottom: 4px; letter-spacing: 0.04em; }
+.company-txt { font-size: 14px; line-height: 1.65; color: var(--ink); }
+.company-foot { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 12px; align-items: center; }
+.company-link { color: var(--accent-ink); text-decoration: none; font-weight: 600; }
 .qrow { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; line-height: 1.5; }
 .qrow b { flex: none; min-width: 3.2em; font-size: 12px; padding: 2px 8px; border-radius: 8px; text-align: center; }
 .qrow.p b { background: var(--good-wash); color: var(--good-ink); }
@@ -440,6 +445,8 @@ const state = {
   demo: false,
   themes: new Set(),
   sectors: new Set(),
+  sizes: new Set(),
+  mkts: new Set(),
   tab: "pass",
   sort: "best",
   mode: "bottom",
@@ -534,6 +541,8 @@ function start(data, demo) {
   const knownThemes = new Set(Object.values(data.genres || {}).flat());
   state.themes = new Set(recall("themes", []).filter((t) => knownThemes.has(t)));
   state.sectors = new Set(recall("sectors", []).filter((s) => (data.sectors || []).includes(s)));
+  state.sizes = new Set(recall("sizes", []).filter((x) => SIZES.includes(x)));
+  state.mkts = new Set(recall("mkts", []).filter((x) => MKTS.includes(x)));
   state.tab = recall("tab", "pass");
   state.sort = recall("sort", "best");
   state.mode = ["bottom", "vol", "ev", "div"].includes(recall("mode", "bottom")) ? recall("mode", "bottom") : "bottom";
@@ -728,7 +737,7 @@ function renderVol(pool = selected()) {
   const key = { ratio: (s) => -s.vs.r, d: (s) => -s.vs.d, to: (s) => -s.vs.to, pos: (s) => s.vs.pos ?? 9, new: (s) => s.vs.age * 1000 - s.vs.r }[k] || ((s) => -s.vs.r);
   list = list.slice().sort((a, b) => key(a) - key(b));
   $("#vol-count").textContent = `${list.length}銘柄`;
-  $("#vol-note").textContent = state.themes.size + state.sectors.size ? "絞り込み中" : "全銘柄から";
+  $("#vol-note").textContent = nSelected() ? "絞り込み中" : "全銘柄から";
   ul.replaceChildren();
   if (!list.length) ul.append(el("li", { class: "empty", text: "該当なし" }));
   const VOL_METRIC = {
@@ -1004,8 +1013,20 @@ function buildFilterSheet() {
   panel.replaceChildren();
   const counts = themeCounts();
   panel.append(el("div", { class: "sheet-top" }, el("span", { class: "grab", "aria-hidden": "true" }),
-    el("h3", { id: "f-title", style: "margin:6px 0 0;font-size:18px", text: "テーマ・業種で絞り込む" }),
-    el("button", { class: "btn-text", id: "clear", onclick: () => { state.themes.clear(); state.sectors.clear(); persistSel(); state.shown = PAGE; render(); } }, "すべて解除")));
+    el("h3", { id: "f-title", style: "margin:6px 0 0;font-size:18px", text: "絞り込む" }),
+    el("button", { class: "btn-text", id: "clear", onclick: () => { state.themes.clear(); state.sectors.clear(); state.sizes.clear(); state.mkts.clear(); persistSel(); state.shown = PAGE; render(); } }, "すべて解除")));
+  // 会社の大きさ・市場
+  const cnt = (key) => d.stocks.reduce((o, x) => { if (x[key]) o[x[key]] = (o[x[key]] || 0) + 1; return o; }, {});
+  const szc = cnt("sz"), mkc = cnt("mk");
+  if (Object.keys(szc).length) {
+    panel.append(el("div", { class: "genre" }, el("div", { class: "genre-label", text: "会社の大きさ" }),
+      el("div", { class: "chips" }, ...SIZES.map((x) => chip(x, "size", szc[x] || 0))),
+      el("div", { class: "muted", style: "font-size:11.5px;margin-top:6px;line-height:1.5", text: "大型=日本を代表する約100社(TOPIX Core30・Large70)/中型=TOPIX Mid400/小型=TOPIXの小型株/超小型=TOPIXに入っていない会社(グロース・スタンダードの小さい会社が中心)" })));
+  }
+  if (Object.keys(mkc).length) {
+    panel.append(el("div", { class: "genre" }, el("div", { class: "genre-label", text: "市場" }),
+      el("div", { class: "chips" }, ...MKTS.map((x) => chip(x, "mkt", mkc[x] || 0)))));
+  }
   for (const [genre, themes] of Object.entries(d.genres || {})) {
     const chips = el("div", { class: "chips" });
     for (const t of themes) chips.append(chip(t, "theme", counts.themes[t] || 0));
@@ -1038,22 +1059,27 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeFilte
 function renderFilterBar(poolLen) {
   const bar = $("#filterbar");
   if (!bar) return;
-  const n = state.themes.size + state.sectors.size;
-  const fb = el("button", { class: "fbtn", onclick: openFilter, "aria-label": `テーマ・業種で絞り込む${n ? `(${n}件選択中)` : ""}` },
+  const n = nSelected();
+  const fb = el("button", { class: "fbtn", onclick: openFilter, "aria-label": `会社の大きさ・テーマ・業種で絞り込む${n ? `(${n}件選択中)` : ""}` },
     el("span", { html: "" }), "絞り込み", el("span", { class: "count", hidden: !n, text: String(n) }));
   fb.firstChild.replaceWith((() => { const x = sv("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": 2.2, "stroke-linecap": "round" }); x.append(sv("path", { d: "M4 6h16M7 12h10M10 18h4" })); return x; })());
   const kids = [fb];
-  for (const [set, kind] of [[state.themes, "theme"], [state.sectors, "sector"]]) {
+  for (const [set, kind] of [[state.sizes, "size"], [state.mkts, "mkt"], [state.themes, "theme"], [state.sectors, "sector"]]) {
     for (const name of set) {
       kids.push(el("button", { class: "achip", "aria-label": `${name}を解除`, onclick: () => { set.delete(name); persistSel(); state.shown = PAGE; render(); } }, name, el("i", { text: "✕" })));
     }
   }
-  if (!n) kids.push(el("span", { class: "fhint", text: `テーマ・業種を選ぶ(未選択=全${poolLen.toLocaleString()}銘柄)` }));
+  if (!n) kids.push(el("span", { class: "fhint", text: `大きさ・テーマ・業種を選ぶ(未選択=全${poolLen.toLocaleString()}銘柄)` }));
   bar.replaceChildren(...kids);
 }
 
+const SIZES = ["大型", "中型", "小型", "超小型"];
+const MKTS = ["プライム", "スタンダード", "グロース"];
+function setOf(kind) { return { theme: state.themes, sector: state.sectors, size: state.sizes, mkt: state.mkts }[kind]; }
+function nSelected() { return state.themes.size + state.sectors.size + state.sizes.size + state.mkts.size; }
+
 function chip(name, kind, n) {
-  const set = kind === "theme" ? state.themes : state.sectors;
+  const set = setOf(kind);
   const b = el("button", { class: n ? "chip" : "chip zero", "aria-pressed": String(set.has(name)), "data-kind": kind, "data-name": name },
     el("span", { class: "box", "aria-hidden": "true" }), name, el("span", { class: "n", text: n ? String(n) : "0" }));
   b.addEventListener("click", () => {
@@ -1065,7 +1091,7 @@ function chip(name, kind, n) {
   });
   return b;
 }
-function persistSel() { store("themes", [...state.themes]); store("sectors", [...state.sectors]); }
+function persistSel() { store("themes", [...state.themes]); store("sectors", [...state.sectors]); store("sizes", [...state.sizes]); store("mkts", [...state.mkts]); }
 
 function themeCounts() {
   const themes = {}, sectors = {};
@@ -1078,19 +1104,23 @@ function themeCounts() {
 
 /* ---------- 絞り込みロジック(STEP1はここで端末内処理) ---------- */
 function selected() {
-  const all = state.data.stocks;
-  if (!state.themes.size && !state.sectors.size) return all;
-  return all.filter((s) => state.sectors.has(s.s) || (s.th || []).some((t) => state.themes.has(t)));
+  let list = state.data.stocks;
+  // テーマ・業種は「どれかに当てはまる」、会社の大きさ・市場は「その中から絞る」
+  if (state.themes.size || state.sectors.size) list = list.filter((s) => state.sectors.has(s.s) || (s.th || []).some((t) => state.themes.has(t)));
+  if (state.sizes.size) list = list.filter((s) => state.sizes.has(s.sz));
+  if (state.mkts.size) list = list.filter((s) => state.mkts.has(s.mk));
+  return list;
 }
 
 function render() {
   const pool = selected();
   for (const c of document.querySelectorAll(".chip")) {
-    const set = c.dataset.kind === "theme" ? state.themes : state.sectors;
+    const set = setOf(c.dataset.kind);
+    if (!set) continue; // テーマ・業種・大きさ・市場以外のチップ(イベントの種類など)は対象外
     c.setAttribute("aria-pressed", String(set.has(c.dataset.name)));
   }
-  $("#clear").disabled = !state.themes.size && !state.sectors.size;
-  const nSel = state.themes.size + state.sectors.size;
+  $("#clear").disabled = !nSelected();
+  const nSel = nSelected();
   $("#sel-line").textContent = nSel ? `${nSel}件で絞り込み中` : "全銘柄";
   const nPass = pool.filter((x) => x.st === "pass").length;
   $("#f-count").textContent = `${pool.length.toLocaleString()}銘柄 → 候補 ${nPass}`;
@@ -1297,8 +1327,9 @@ function openDetail(s, ctx = null) {
 
   panel.append(el("div", { class: "d-head" },
     el("h3", { id: "d-title", text: s.n }),
-    el("div", { class: "code", text: `${code(s.t)} ・ ${s.s}${(s.th || []).length ? " ・ " + s.th.join("・") : ""}` }),
+    el("div", { class: "code", text: `${code(s.t)} ・ ${s.s}${s.mk ? " ・ " + s.mk : ""}${s.sz ? "・" + s.sz : ""}${(s.th || []).length ? " ・ " + s.th.join("・") : ""}` }),
     s.px != null ? el("div", { class: "price" }, el("b", { text: `${yen(s.px)}円` }), el("span", { class: "sub", text: "最新終値" })) : null),
+    companySection(s),
     el("div", { class: "why", text: ctx === "vol" && s.vs ? volWhy(s) : ctx === "ev" ? evWhy(s) : ctx === "div" && s.dv ? divWhy(s) : whyText(s) }));
   if (ctx) panel.append(el("div", { class: "why", style: "margin-top:8px;font-size:13px", text: `底打ちの見方では: ${whyText(s)}` }));
 
@@ -1397,6 +1428,57 @@ async function loadChart(s) {
   } catch (_) { return false; }
 }
 
+/* ---------- どんな会社？(Wikipedia日本語版 → Yahoo Financeの英語概要 → リンク) ---------- */
+const _wiki = new Map();
+const nk = (t) => (t || "").normalize("NFKC").replace(/\s|株式会社|\(株\)|（株）/g, "").replace(/\(.*?\)$/, "");
+async function wikiIntro(s) {
+  if (_wiki.has(s.t)) return _wiki.get(s.t);
+  const name = nk(s.n);
+  const core = name.replace(/(ホールディングス|HD|グループ)$/, "");
+  const api = (q) => `https://ja.wikipedia.org/w/api.php?origin=*&format=json&action=query&list=search&srlimit=6&srsearch=${encodeURIComponent(q)}`;
+  let result = null;
+  try {
+    // 証券コードが記事の中にある&名前が近い記事を優先(同じ名前の別物を避ける)
+    for (const q of [`insource:"${code(s.t)}" ${core}`, `${name} 企業`]) {
+      const hits = (await fetch(api(q)).then((r) => r.json())).query?.search || [];
+      // 名前が完全に一致する記事を優先。次に「会社名の頭の部分」と一致する記事(〜の車種一覧 などの関連記事は選ばない)
+      const pick = hits.find((h) => { const t = nk(h.title); return t === name || t === core; })
+        || hits.find((h) => { const t = nk(h.title); return t.length >= 3 && name.startsWith(t); });
+      if (!pick) continue;
+      const sum = await fetch(`https://ja.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pick.title)}`).then((r) => (r.ok ? r.json() : null));
+      if (!sum?.extract || sum.type === "disambiguation" || !/会社|企業|持株|メーカー|事業|法人/.test(sum.extract)) continue;
+      result = { text: sum.extract, url: sum.content_urls?.mobile?.page || `https://ja.wikipedia.org/wiki/${encodeURIComponent(pick.title)}` };
+      break;
+    }
+  } catch (_) { result = null; }
+  _wiki.set(s.t, result);
+  return result;
+}
+
+function companySection(s) {
+  const body = el("div", { class: "sub", text: "読み込み中…" });
+  const box = el("div", { class: "box company" }, el("div", { class: "company-h", text: "どんな会社？" }), body);
+  const yahoo = `https://finance.yahoo.co.jp/quote/${encodeURIComponent(s.t)}/profile`;
+  const more = (label, url) => el("a", { href: url, target: "_blank", rel: "noopener", class: "company-link" }, label);
+  wikiIntro(s).then((w) => {
+    if (w) {
+      const long = w.text.length > 180;
+      const txt = el("div", { class: "company-txt", text: long ? w.text.slice(0, 170) + "…" : w.text });
+      body.replaceWith(el("div", {}, txt,
+        el("div", { class: "company-foot" },
+          long ? el("button", { class: "btn-text", style: "font-size:12px;padding:0", onclick: (e) => { txt.textContent = w.text; e.target.remove(); } }, "全文を読む") : null,
+          more("出典: Wikipedia", w.url), more("企業情報(Yahoo!ファイナンス)", yahoo))));
+    } else if (s.biz) {
+      body.replaceWith(el("div", {}, el("div", { class: "company-txt", lang: "en", text: s.biz }),
+        el("div", { class: "company-foot" }, el("span", { class: "muted", text: "Yahoo Financeの英語の概要" }), more("日本語の企業情報(Yahoo!ファイナンス)", yahoo))));
+    } else {
+      body.replaceWith(el("div", {}, el("div", { class: "sub", text: `${s.s}の会社。自動で取れる紹介文がなかったので、詳しくはリンク先で。` }),
+        el("div", { class: "company-foot" }, more("企業情報(Yahoo!ファイナンス)", yahoo), more("株探", `https://kabutan.jp/stock/?code=${encodeURIComponent(code(s.t))}`))));
+    }
+  });
+  return box;
+}
+
 function qualitySection(s) {
   const q = s.q || { p: [], m: [] };
   const rows = [
@@ -1479,6 +1561,7 @@ function buildPrompt(s) {
 ${lines.join("\n")}${news.length ? `\n【直近の見出し】\n${news.map((x) => "・" + x).join("\n")}` : ""}
 
 【答え方】各項目は短く(箇条書き3つまで)。
+0. どんな会社か(2行で)
 1. 明るい材料
 2. 暗い材料
 3. 短期(〜1ヶ月)の見通し: 上がる/横ばい/下がる のどれが有力か、理由、注意点

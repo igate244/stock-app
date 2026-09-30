@@ -17,8 +17,28 @@ JPX_URL = "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001v
 FALLBACK_CSV = Path(__file__).resolve().parent.parent / "data" / "tickers.csv"
 
 
+def market_short(v) -> str | None:
+    v = str(v)
+    for key, short in [("プライム", "プライム"), ("スタンダード", "スタンダード"), ("グロース", "グロース")]:
+        if key in v:
+            return short
+    return None
+
+
+def size_class(v) -> str:
+    """JPXの規模区分(TOPIXの構成)を4段階に。TOPIXに入っていない銘柄(主にグロース・スタンダードの小さい会社)は「超小型」。"""
+    v = str(v)
+    if "Core30" in v or "Large70" in v:
+        return "大型"
+    if "Mid400" in v:
+        return "中型"
+    if "Small" in v:
+        return "小型"
+    return "超小型"
+
+
 def load_universe() -> pd.DataFrame:
-    """columns: ticker, name, sector。JPXから取れなければリポジトリ内のCSVで代用。"""
+    """columns: ticker, name, sector, market, size。JPXから取れなければリポジトリ内のCSVで代用(market/sizeは空)。"""
     try:
         resp = requests.get(JPX_URL, timeout=60, headers={"User-Agent": "Mozilla/5.0"})
         resp.raise_for_status()
@@ -26,11 +46,18 @@ def load_universe() -> pd.DataFrame:
         df = df.rename(columns={"コード": "code", "銘柄名": "name", "33業種区分": "sector"})
         df = df[df["sector"] != "-"]
         df["ticker"] = df["code"].astype(str).str.strip() + ".T"
-        universe = df[["ticker", "name", "sector"]]
+        # 市場区分(プライム/スタンダード/グロース)と規模区分(TOPIXの大型・中型・小型)。列名の揺れに備えて部分一致で探す
+        mcol = next((c for c in df.columns if "市場" in str(c)), None)
+        scol = next((c for c in df.columns if "規模区分" in str(c)), None)
+        df["market"] = df[mcol].map(market_short) if mcol else None
+        df["size"] = df[scol].map(size_class) if scol else None
+        universe = df[["ticker", "name", "sector", "market", "size"]]
         print(f"[universe] JPXから {len(universe)} 銘柄を取得")
     except Exception as exc:  # noqa: BLE001
         print(f"[universe] JPX取得に失敗({exc})。{FALLBACK_CSV.name} を使用")
         universe = pd.read_csv(FALLBACK_CSV, encoding="utf-8-sig")[["ticker", "name", "sector"]]
+        universe["market"] = None
+        universe["size"] = None
 
     # 社債型種類株式などの普通株以外は除外
     universe = universe[~universe["name"].astype(str).str.contains("種類株式")]

@@ -105,6 +105,30 @@ def earnings(ticker: str) -> dict:
     }
 
 
+# ---- 会社の概要(Yahoo Financeの会社情報・英語) + 決算の要約値 -----------------------
+def profile(ticker: str) -> dict:
+    """
+    Yahoo Financeの会社情報。事業内容の説明(英語)と、四半期決算が取れない銘柄のための
+    直近12ヶ月の利益率・売上成長率・利益成長率。取れなければ空。
+    """
+    try:
+        info = yf.Ticker(ticker).info or {}
+    except Exception:  # noqa: BLE001
+        return {}
+    out = {}
+    biz = (info.get("longBusinessSummary") or "").strip()
+    if biz:
+        out["biz"] = biz if len(biz) <= 420 else biz[:400].rsplit(" ", 1)[0] + " …"
+    for k, key in [("pm", "profitMargins"), ("rg", "revenueGrowth"), ("eg", "earningsGrowth")]:
+        v = info.get(key)
+        if isinstance(v, (int, float)) and v == v:
+            out[k] = round(float(v), 4)
+    for k, key in [("emp", "fullTimeEmployees"), ("web", "website")]:
+        if info.get(key):
+            out[k] = info[key]
+    return out
+
+
 # ---- STEP6: ニュース(Google News RSS・無料) ----------------------------------------
 def news(name: str, lookback_days: int = 14, max_items: int = 6) -> list[dict]:
     """銘柄名で検索した直近ニュースの見出し。ポジネガの判断はしない(AI/自分で読む)。"""
